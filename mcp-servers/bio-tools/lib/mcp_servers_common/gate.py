@@ -11,20 +11,66 @@ single domain server never pays for importing the whole 26-server fleet).
 Contract (same as mcp_bio.load_deferred): unknown names in the gate fail
 CLOSED with a RuntimeError; a server whose every tool is gated refuses to
 start rather than serving an empty tool list.
+
+No-bulk mode: when the daemon puts OPERON_MCP_NO_BULK in the spawn env, the
+gate also removes deferred.json's no_bulk_tools and lets CALLS_PER_MINUTE
+tool calls a minute through, per server process.
 """
 
 from __future__ import annotations
 
 import importlib.resources
 import json
+import math
+import os
 import threading
+import time
+from collections import deque
 
 import anyio
+
+from . import never_trust
+
+CALLS_PER_MINUTE = 10
+_clock = time.monotonic
+
+_OVER_LIMIT = (
+    "This build allows {n} calls a minute to this connector, counted across "
+    "all sessions and sub-agents, and this call is over that. The limit is "
+    "deliberate, not a fault, so please don't look for another way to reach "
+    "the same data. Wait {wait} seconds and call again, or make do with fewer "
+    "calls. If that stops you finishing, tell the user what you needed.")
 
 
 def _load(resource: str) -> dict:
     with importlib.resources.files("mcp_bio").joinpath(resource).open("r") as f:
         return json.load(f)
+
+
+def no_bulk() -> bool:
+    """Did the daemon ask for no-bulk mode? Any non-empty value counts."""
+    return bool(os.environ.get("OPERON_MCP_NO_BULK"))
+
+
+def _call_limit():
+    """Returns check(). In no-bulk mode check() raises when the call would be
+    more than CALLS_PER_MINUTE in the last 60 seconds. Outside the mode it does
+    nothing."""
+    if not no_bulk():
+        return lambda: None
+    recent: deque[float] = deque(maxlen=CALLS_PER_MINUTE)
+    guard = threading.Lock()
+
+    def check() -> None:
+        with guard:
+            now = _clock()
+            if len(recent) == CALLS_PER_MINUTE and now - recent[0] < 60:
+                raise RuntimeError(_OVER_LIMIT.format(
+                    n=CALLS_PER_MINUTE,
+                    wait=math.ceil(60 - (now - recent[0]))))
+            recent.append(now)
+
+    return check
 
 
 def gated_tool_names() -> frozenset[str]:
@@ -33,13 +79,22 @@ def gated_tool_names() -> frozenset[str]:
     gate = _load("deferred.json")
     all_tools = {t for roster in domains.values() for t in roster}
     bad_domains = set(gate.get("domains", [])) - set(domains)
-    bad_tools = (set(gate.get("tools", []))
-                 | set(gate.get("license_tools", []))) - all_tools
+    names = (set(gate.get("tools", []))
+             | set(gate.get("license_tools", []))
+             | set(gate.get("unavailable_tools", [])))
+    if no_bulk():
+        off = gate.get("no_bulk_tools")
+        if not off:
+            raise RuntimeError(
+                "OPERON_MCP_NO_BULK is set but mcp_bio/deferred.json has no "
+                "no_bulk_tools map, so this server will not start. Repackage "
+                "with the map.")
+        names |= {t for tools in off.values() for t in tools}
+    bad_tools = names - all_tools
     if bad_domains or bad_tools:
         raise RuntimeError(
             "deferred.json names unknown to domains.json — failing closed: "
             f"domains={sorted(bad_domains)} tools={sorted(bad_tools)}")
-    names = set(gate.get("tools", [])) | set(gate.get("license_tools", []))
     for d in gate.get("domains", []):
         names |= set(domains[d])
     return frozenset(names)
@@ -52,8 +107,8 @@ def apply_gate_fastmcp(fm) -> None:
     imports these modules and applies its own gate). Raises if the gate
     empties the server: a fully-deferred domain must refuse to start.
 
-    Also ports the aggregate's CRITICAL dispatch safeguard (finding
-    3406443687): FastMCP calls SYNC tool functions inline on the event
+    Also ports the aggregate's CRITICAL dispatch safeguard:
+    FastMCP calls SYNC tool functions inline on the event
     loop, and every tier-2 tool does blocking HTTP — one slow upstream
     would wedge the whole standalone server (listTools health probes,
     concurrent calls, cancellations) exactly like the pride_search
@@ -75,25 +130,28 @@ def apply_gate_fastmcp(fm) -> None:
             f"{fm.name}: every tool is deferred by mcp_bio/deferred.json — "
             "this domain is not cleared to serve standalone")
     if getattr(fm, "_operon_offloop_dispatch", False):
-        return  # idempotent — don't double-wrap
+        return
     orig_call_tool = fm.call_tool
     lock = anyio.Lock()
+    check = _call_limit()
 
     async def _call_tool_offloop(name, arguments):
         def _run_in_worker() -> object:
             return anyio.run(orig_call_tool, name, arguments)
 
+        check()
         async with lock:
-            return await anyio.to_thread.run_sync(_run_in_worker)
+            with never_trust.surfaced():
+                return await anyio.to_thread.run_sync(_run_in_worker)
 
-    # Rebinding the instance attribute alone is DEAD on the real serving
-    # path (finding 3406680897): FastMCP registers the BOUND self.call_tool
-    # into the low-level Server's request-handler table at construction, and
-    # that captured reference is never re-resolved. Re-register the handler
-    # so mcp.run() actually dispatches through the wrapper — same decorator
-    # call _setup_handlers used, which overwrites the handler-table entry.
+
+
+
+
+
+
     fm._mcp_server.call_tool(validate_input=False)(_call_tool_offloop)
-    # Keep the attribute rebound too, for in-process callers and tests.
+
     fm.call_tool = _call_tool_offloop
     fm._operon_offloop_dispatch = True
 
@@ -105,11 +163,11 @@ def apply_gate_tier1(t1) -> None:
     stay pristine — the drop-in parity tests and the aggregate consume the
     full schema set. Raises if the gate empties the server.
 
-    Also serializes same-process dispatch (finding 3406443687):
+    Also serializes same-process dispatch:
     Tier1Server._call_tool offloads via anyio.to_thread with NO lock, while
     the domain's handlers share one @lru_cache client wrapping a
-    requests.Session (not thread-safe, non-atomic stats writes — reviews
-    3386234819/3386420557). Each handler is wrapped with a process-wide
+    requests.Session (not thread-safe, non-atomic stats writes). Each
+    handler is wrapped with a process-wide
     threading.Lock, held inside the worker thread: same one-in-flight
     serialization the aggregate enforces per domain, while the event loop
     stays free.
@@ -122,12 +180,14 @@ def apply_gate_tier1(t1) -> None:
             f"{t1.name}: every tool is deferred by mcp_bio/deferred.json — "
             "this domain is not cleared to serve standalone")
     if getattr(t1, "_operon_serialized_dispatch", False):
-        return  # idempotent — don't double-wrap
+        return
     lock = threading.Lock()
+    check = _call_limit()
 
     def _serialized(handler):
         def run(args):
-            with lock:
+            check()
+            with lock, never_trust.surfaced():
                 return handler(args)
         return run
 

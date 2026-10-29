@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any
 
-# Verbatim from the original connector's outputs (captured 2026-06-09).
+
 IMPORTANT_LEGAL_NOTICE = (
     "**Important Legal Requirement**\n"
     "  Everytime one uses this tool, they MUST ALWAYS do the following two things:\n\n"
@@ -24,7 +24,7 @@ IMPORTANT_LEGAL_NOTICE = (
 )
 
 
-# ── get_article_metadata ────────────────────────────────────────────────────
+
 
 def _text(el: ET.Element | None) -> str | None:
     if el is None:
@@ -121,7 +121,7 @@ def article_from_xml(xml_text: str) -> dict[str, Any]:
         "abstract": _text(el.find("MedlineCitation/Article/Abstract/AbstractText"))
         if el.find("MedlineCitation/Article/Abstract") is not None else None,
     }
-    # multi-paragraph abstracts: join all AbstractText blocks
+
     abs_parts = [
         p for at in el.findall("MedlineCitation/Article/Abstract/AbstractText")
         if (p := "".join(at.itertext()).strip())
@@ -151,7 +151,7 @@ def article_metadata_response(xml_by_pmid: dict[str, str],
     }
 
 
-# ── get_full_text_article ───────────────────────────────────────────────────
+
 
 def full_text_response(records: list[dict]) -> dict[str, Any]:
     articles = []
@@ -164,10 +164,10 @@ def full_text_response(records: list[dict]) -> dict[str, Any]:
         if r.get("doi"):
             identifiers["doi"] = r["doi"]
         sections = r.get("sections") or []
-        # Join with a blank line (finding 3406986070): each section text is
-        # stripped and begins with its title token, so a bare "".join merges
-        # the last word of one section into the next section's title
-        # (e.g. "differ.Discussion") at every boundary.
+
+
+
+
         full_text = "\n\n".join(
             t for s in sections if (t := (s.get("text") or "").strip())
         )
@@ -176,11 +176,11 @@ def full_text_response(records: list[dict]) -> dict[str, Any]:
             "title": r.get("title"),
             "full_text": full_text,
         }
-        # Surface the per-article license (finding 3406986070): fetch_articles
-        # retrieves JATS full text for every OA article gating only on is_oa,
-        # so CC BY-NC/ND bodies are relayed — ship the license indicator the
-        # LICENSE_REPORT prescribes for Europe PMC (mirrors the OpenAlex
-        # abstract_license cure) instead of dropping it.
+
+
+
+
+
         if r.get("license"):
             art["license"] = r["license"]
         if r.get("doi"):
@@ -188,8 +188,8 @@ def full_text_response(records: list[dict]) -> dict[str, Any]:
         if r.get("abstract"):
             art["abstract"] = r["abstract"]
         if r.get("fulltext_status") != "retrieved":
-            # New fields (additive): the fleet tool reports WHY full text is
-            # missing; the original silently returned empty text.
+
+
             art["fulltext_status"] = r.get("fulltext_status")
             if r.get("detail"):
                 art["detail"] = r.get("detail")
@@ -201,7 +201,7 @@ def full_text_response(records: list[dict]) -> dict[str, Any]:
     }
 
 
-# ── find_related_articles ───────────────────────────────────────────────────
+
 
 def related_articles_response(linksets: list[dict], max_results: int | None) -> dict[str, Any]:
     """Reshape ncbi-elink linkset records into the raw NCBI elink JSON shape
@@ -227,16 +227,16 @@ def related_articles_response(linksets: list[dict], max_results: int | None) -> 
     return {"linksets": out}
 
 
-# ── convert_article_ids ─────────────────────────────────────────────────────
+
 
 def convert_ids_response(records: list[dict], ids: list[str],
                          id_type: str) -> dict[str, Any]:
     recs = []
     for r in records:
-        # Emit explicit nulls for missing identifiers (06-25 probe item 6):
-        # dropped keys force every caller to distinguish "absent" from
-        # "present-but-empty" before reading — an explicit ``null`` makes the
-        # shape stable so ``rec["pmcid"] is None`` is always safe.
+
+
+
+
         rec: dict[str, Any] = {
             "pmcid": r.get("pmcid") or None,
             "pmid": r.get("pmid") or None,
@@ -256,9 +256,9 @@ def convert_ids_response(records: list[dict], ids: list[str],
             "format": "json",
             "idtype": id_type,
             "ids": list(ids),
-            # The original echoed the service's contact email and — by
-            # upstream bug — its NCBI api_key. Deliberately not replicated
-            # (see BEHAVIOR_CHANGES.md); key names are preserved.
+
+
+
             "email": None,
             "tool": "mcp-pubmed",
             "echo": f"tool=mcp-pubmed&ids={','.join(ids)}&format=json&idtype={id_type}",
@@ -269,7 +269,7 @@ def convert_ids_response(records: list[dict], ids: list[str],
     }
 
 
-# ── get_copyright_status ────────────────────────────────────────────────────
+
 
 def copyright_status_response(fleet_results: list[dict],
                               dois: dict[str, str | None] | None = None) -> dict[str, Any]:
@@ -278,7 +278,7 @@ def copyright_status_response(fleet_results: list[dict],
     n_pubmed = n_pmc = n_not_found = n_oa = 0
     for r in fleet_results:
         perm = r.get("pmc") or {}
-        source = r.get("source")  # "pmc" | "pubmed" | "not_available"
+        source = r.get("source")
         checked = ["pubmed"] + (["pmc"] if r.get("pmcid") else [])
         lic_type = perm.get("license_type")
         lic_url = perm.get("license_ref")
@@ -332,7 +332,7 @@ def copyright_status_response(fleet_results: list[dict],
     }
 
 
-# ── search_articles ─────────────────────────────────────────────────────────
+
 
 def search_articles_response(fleet_result: dict, query: str, retstart: int,
                              max_results: int) -> dict[str, Any]:
@@ -352,7 +352,7 @@ def search_articles_page_response(page_result: dict, query: str, retstart: int,
                                   max_results: int) -> dict[str, Any]:
     """Same wire shape as search_articles_response, but for a pre-paged
     esearch result (client.search_page): pmids already ARE the window at
-    `retstart`. Operon vendored-copy addition (#2875 review 3377922590)."""
+    `retstart`. Operon vendored-copy addition."""
     window: list[str] = page_result["pmids"][:max_results]
     return {
         "pmids": window,
@@ -364,7 +364,7 @@ def search_articles_page_response(page_result: dict, query: str, retstart: int,
     }
 
 
-# ── lookup_article_by_citation ──────────────────────────────────────────────
+
 
 def citation_lookup_response(fleet_results: list[dict],
                              citations: list[dict]) -> dict[str, Any]:
@@ -376,9 +376,9 @@ def citation_lookup_response(fleet_results: list[dict],
             "volume": given.get("volume"),
             "first_page": given.get("first_page"),
             "author": given.get("author"),
-            # The original connector SWAPPED these two fields (echoed the
-            # caller's key as "pmid" and put the resolved PMID in "key").
-            # Fixed here — see BEHAVIOR_CHANGES.md.
+
+
+
             "pmid": r.get("pmid"),
             "key": r.get("key"),
         }

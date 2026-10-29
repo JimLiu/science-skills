@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import urllib.parse
 from typing import Any
+
+from mcp_servers_common.pathseg import seg
 
 from .client import MGnifyClient, MGnifyNotFound
 from .records import (
@@ -26,7 +27,7 @@ def fetch_study_analyses(accession: str, client: MGnifyClient | None = None) -> 
     """
     client = client or MGnifyClient()
     res = client.get_all(
-        f"studies/{urllib.parse.quote(str(accession), safe='')}/analyses")
+        f"studies/{seg(accession)}/analyses")
     records = sorted(
         (flatten_analysis(o, accession) for o in res["records"]),
         key=lambda r: r["analysis_accession"],
@@ -51,9 +52,11 @@ def fetch_studies(
     studies: list[dict[str, Any]] = []
     analyses: dict[str, list[dict[str, Any]]] = {}
     missing: list[str] = []
+
+
     for acc in sorted(set(accessions)):
         try:
-            doc = client.get_json(f"studies/{urllib.parse.quote(str(acc), safe='')}")
+            doc = client.get_json(f"studies/{seg(acc)}")
         except MGnifyNotFound:
             missing.append(acc)
             continue
@@ -83,7 +86,7 @@ def search_studies(spec: dict[str, Any], client: MGnifyClient | None = None) -> 
     """
     client = client or MGnifyClient()
     if spec["type"] == "biome":
-        path = f"biomes/{urllib.parse.quote(spec['lineage'], safe=':')}/studies"
+        path = f"biomes/{seg(spec['lineage'], safe=':')}/studies"
         params: dict[str, Any] = {}
     elif spec["type"] == "search":
         path = "studies"

@@ -29,7 +29,7 @@ class RfamFamilies:
     def __init__(self, client: RfamClient | None = None):
         self.client = client or RfamClient()
 
-    # 1. family info ---------------------------------------------------- #
+
     def get_family(self, family: str) -> dict:
         """Family metadata record (flattened from the /family JSON)."""
         payload = self.client.get_json(f"/family/{_seg(family)}")
@@ -37,7 +37,7 @@ class RfamFamilies:
         rec["raw"] = payload.get("rfam", payload)
         return rec
 
-    # 2./3. seed alignment ---------------------------------------------- #
+
     def get_alignment(self, family: str, fmt: str = "stockholm") -> dict:
         """Seed alignment. ``fmt`` is 'stockholm' or 'fasta' (aligned gapped).
 
@@ -56,7 +56,7 @@ class RfamFamilies:
                 "sequence_names": names, "sha256": sha256_text(text),
                 "alignment": text}
 
-    # 4. covariance model ------------------------------------------------ #
+
     def get_cm(self, family: str) -> dict:
         """Infernal covariance model file + parsed header fields."""
         text = self.client.get_text(f"/family/{_seg(family)}/cm")
@@ -64,7 +64,7 @@ class RfamFamilies:
         return {"family": family, "header": header, "size_bytes": len(text.encode()),
                 "sha256": sha256_text(text), "cm": text}
 
-    # 5. tree ------------------------------------------------------------ #
+
     def get_tree(self, family: str) -> dict:
         """Seed phylogenetic tree (NHX/Newick text)."""
         text = self.client.get_text(f"/family/{_seg(family)}/tree")
@@ -72,7 +72,7 @@ class RfamFamilies:
         return {"family": family, "num_leaf_labels": n_leaves,
                 "sha256": sha256_text(text), "tree": text}
 
-    # 6. sequence regions -------------------------------------------------#
+
     def sequence_regions(self, family: str) -> dict:
         """All full-region hits for the family (TSV route, parsed).
 
@@ -86,7 +86,7 @@ class RfamFamilies:
                 "num_regions": len(parsed["regions"]),
                 "regions": parsed["regions"]}
 
-    # 7. structure mapping ------------------------------------------------#
+
     def structure_mapping(self, family: str) -> dict:
         """PDB residue mappings for the family, deterministically sorted."""
         payload = self.client.get_json(f"/family/{_seg(family)}/structures")
@@ -96,7 +96,7 @@ class RfamFamilies:
                 "num_pdb_ids": len(pdb_ids), "pdb_ids": pdb_ids,
                 "mapping": rows}
 
-    # 8. accession <-> id ---------------------------------------------------#
+
     def acc_to_id(self, accession: str) -> str:
         """RFxxxxx -> family id (e.g. RF00005 -> 'tRNA')."""
         return self.client.get_text(f"/family/{_seg(accession)}/id").strip()
@@ -109,7 +109,7 @@ class RfamFamilies:
                            f"no accession resolved for {family_id!r}")
         return text
 
-    # 9. sequence search ------------------------------------------------- #
+
     def search_sequence(self, sequence: str, max_wait_s: float = 300.0,
                         poll_interval_s: float = 5.0) -> dict:
         """Async single-sequence cmscan search: submit, poll, return hits.

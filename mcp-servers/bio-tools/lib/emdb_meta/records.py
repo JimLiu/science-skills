@@ -5,7 +5,7 @@ import json
 from typing import Any
 
 
-# --------------------------------------------------------------------- helpers
+
 def _value_of(node: Any) -> Any:
     """Many EMDB v3 fields are {'valueOf_': x, 'units': u, ...}; unwrap to x."""
     if isinstance(node, dict) and "valueOf_" in node:
@@ -37,7 +37,7 @@ def _listify(node: Any) -> list:
     return [node]
 
 
-# ----------------------------------------------------------------- extraction
+
 def extract_entry_record(entry: dict) -> dict:
     """Flatten one EMDB entry JSON document into a structured map-metadata record.
 
@@ -56,7 +56,7 @@ def extract_entry_record(entry: dict) -> dict:
     sample = entry.get("sample") or {}
     map_block = entry.get("map") or {}
 
-    # ---- status / obsolescence
+
     status_node = admin.get("current_status") or {}
     status_code = _value_of(status_node.get("code")) if status_node else None
     obsolete_entries = []
@@ -68,10 +68,10 @@ def extract_entry_record(entry: dict) -> dict:
                 obsolete_entries.append({"entry": str(repl), "date": _date_only(item.get("date"))})
     superseded_by = sorted({o["entry"] for o in obsolete_entries})
 
-    # ---- key dates
+
     key_dates = admin.get("key_dates") or {}
 
-    # ---- structure determination / resolution
+
     sd_list = (entry.get("structure_determination_list") or {}).get("structure_determination") or []
     sd = sd_list[0] if sd_list else {}
     method = sd.get("method")
@@ -89,7 +89,7 @@ def extract_entry_record(entry: dict) -> dict:
                 resolution_units = res_node.get("units")
         resolution_method = final.get("resolution_method")
 
-    # ---- sample / macromolecules
+
     sample_name = _value_of(sample.get("name")) if sample.get("name") else None
     macromolecules = []
     mml = (sample.get("macromolecule_list") or {}).get("macromolecule") or []
@@ -104,7 +104,7 @@ def extract_entry_record(entry: dict) -> dict:
         if name:
             supramolecules.append(str(name))
 
-    # ---- fitted PDB models (pdb_list is null when no model is fitted)
+
     fitted_pdb_ids: list[str] = []
     pdb_list = xref.get("pdb_list") or {}
     for ref in _listify(pdb_list.get("pdb_reference")):
@@ -112,14 +112,14 @@ def extract_entry_record(entry: dict) -> dict:
             fitted_pdb_ids.append(str(ref["pdb_id"]).lower())
     fitted_pdb_ids = sorted(set(fitted_pdb_ids))
 
-    # ---- primary citation
+
     citation = {
         "title": None, "journal": None, "year": None, "published": None,
         "doi": None, "pmid": None, "first_author": None, "author_count": 0,
     }
     cit_list = xref.get("citation_list") or {}
     primary = cit_list.get("primary_citation") or {}
-    # the citation payload sits under a single type key, e.g. {"citation_type": {...}}
+
     inner = None
     if isinstance(primary, dict):
         if "external_references" in primary or "author" in primary:
@@ -148,7 +148,7 @@ def extract_entry_record(entry: dict) -> dict:
             elif ref_type == "PUBMED" and citation["pmid"] is None:
                 citation["pmid"] = val
 
-    # ---- map geometry (metadata only; the volume itself is never downloaded)
+
     dims = map_block.get("dimensions") or {}
     spacing = map_block.get("pixel_spacing") or {}
 
@@ -211,7 +211,7 @@ def fetch_entry_records(client, emdb_ids: list[str]) -> list[dict]:
     return records
 
 
-# ------------------------------------------------------------- canonical form
+
 def canonicalize(obj: Any) -> bytes:
     """Stable byte serialization used by the gate and the run-to-run identity check.
 

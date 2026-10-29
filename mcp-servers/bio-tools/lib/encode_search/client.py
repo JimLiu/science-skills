@@ -70,7 +70,7 @@ class EncodeClient:
             except ValueError:
                 body = None
             if isinstance(body, dict) and body.get("total") == 0:
-                return body  # documented zero-hit search shape
+                return body
         if resp.status_code != 200:
             raise EncodeAPIError(resp.status_code, resp.url, resp.text)
         return resp.json()

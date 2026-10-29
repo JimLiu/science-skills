@@ -27,11 +27,11 @@ from mcp_servers_common.ua import contact_email, product_ua
 
 PUG_BASE = "https://pubchem.ncbi.nlm.nih.gov/rest/pug"
 PUG_VIEW_BASE = "https://pubchem.ncbi.nlm.nih.gov/rest/pug_view"
-USER_AGENT = product_ua("pubchem-compounds")
+USER_AGENT = product_ua()
 DEFAULT_TOOL = "bio-tools-pubchem-compounds"
-# Per-install operator contact (legal Y12). PubChem is *.ncbi.nlm.nih.gov, so
-# same precedence as the other NCBI clients: NCBI_EMAIL > consented > omit
-# (review 3464732166). The param is omitted rather than sent empty.
+
+
+
 DEFAULT_EMAIL = os.environ.get("NCBI_EMAIL") or contact_email()
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
@@ -69,10 +69,10 @@ class PugRestClient:
         self.stats = TransportStats()
 
     def _throttle(self) -> None:
-        # PROCESS-wide per-host pacing via the shared HostPacer — all NCBI
-        # clients in the one-process aggregate share a single budget
-        # (SHARED_BUDGET_SUFFIXES collapses *.ncbi.nlm.nih.gov; review
-        # 3393212445). Per-instance state would stack across domains.
+
+
+
+
         pace(PUG_BASE, self.min_interval_s)
 
     def request_json(self, url: str, params: dict | None = None,
@@ -82,7 +82,7 @@ class PugRestClient:
         Raises NotFound on a PUGREST.NotFound fault, PubChemApiError on any
         other fault or after exhausting the single retry.
         """
-        # NCBI etiquette: identify the tool + contact on every request.
+
         ident: dict[str, str] = {"tool": self.tool}
         if self.email:
             ident["email"] = self.email
@@ -99,7 +99,7 @@ class PugRestClient:
                                             timeout=self.timeout_s)
             except requests.RequestException as exc:
                 last_err = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(2.0)
                 continue
             self.stats.requests += 1
@@ -110,11 +110,11 @@ class PugRestClient:
                 last_err = PubChemApiError(f"HTTP {resp.status_code}")
                 delay = retry_after_seconds(resp.headers.get("Retry-After", ""),
                                             2.0, cap=10.0)
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(delay)
                 continue
             if resp.status_code == 404:
-                # {"Fault": {"Code": "PUGREST.NotFound", "Message": ...}}
+
                 try:
                     fault = resp.json().get("Fault", {})
                 except json.JSONDecodeError:

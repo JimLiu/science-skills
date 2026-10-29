@@ -33,8 +33,8 @@ from .parse import parse_article
 
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 DEFAULT_TOOL = "pubmed-fetch"
-DEFAULT_BATCH_SIZE = 200          # efetch PMIDs per request
-DEFAULT_SLEEP_S = 0.5             # politeness sleep before every HTTP request (<= 2 req/s)
+DEFAULT_BATCH_SIZE = 200
+DEFAULT_SLEEP_S = 0.5
 DEFAULT_TIMEOUT_S = 120.0
 DEFAULT_MAX_RETRIES = 3
 RETRY_STATUS = {429, 500, 502, 503, 504}
@@ -49,8 +49,8 @@ class FetchStats:
     """Transport-level instrumentation for benchmarking."""
 
     http_requests: int = 0
-    bytes_downloaded: int = 0          # wire bytes (httpx num_bytes_downloaded; gzip-compressed)
-    bytes_decoded: int = 0             # decoded response body bytes
+    bytes_downloaded: int = 0
+    bytes_decoded: int = 0
     request_log: list[dict] = field(default_factory=list)
 
     def reset(self) -> None:
@@ -91,7 +91,7 @@ class PubMedFetcher:
             headers={"User-Agent": f"{tool}/0.1.0 ({email})"},
         )
 
-    # -- lifecycle -----------------------------------------------------------------
+
 
     def close(self) -> None:
         self._client.close()
@@ -102,7 +102,7 @@ class PubMedFetcher:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    # -- low-level transport -------------------------------------------------------
+
 
     def _common_params(self) -> dict:
         params = {"tool": self.tool, "email": self.email}
@@ -117,15 +117,15 @@ class PubMedFetcher:
         last_exc: Exception | None = None
         for attempt in range(self.max_retries + 1):
             if self.sleep_s:
-                # Process-wide per-host pacing shared by every NCBI client in
-                # the aggregate (mcp_servers_common.ratelimit).
+
+
                 pace(url, self.sleep_s)
             t0 = time.perf_counter()
             try:
                 resp = self._client.post(url, data=payload)
-            except httpx.TransportError as exc:        # connection/timeouts -> retry
+            except httpx.TransportError as exc:
                 last_exc = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     self._backoff(attempt)
                 continue
             elapsed = time.perf_counter() - t0
@@ -145,7 +145,7 @@ class PubMedFetcher:
                 last_exc = PubMedFetchError(
                     f"{endpoint} returned HTTP {resp.status_code}: {resp.text[:200]}"
                 )
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     self._backoff(attempt)
                 continue
             resp.raise_for_status()
@@ -157,7 +157,7 @@ class PubMedFetcher:
     def _backoff(self, attempt: int) -> None:
         time.sleep(min(2.0 * (2**attempt), 30.0))
 
-    # -- E-utilities steps -----------------------------------------------------------
+
 
     def epost(self, pmids: Sequence[str]) -> tuple[str, str]:
         """POST the PMID list to the History server; return (webenv, query_key)."""
@@ -184,7 +184,7 @@ class PubMedFetcher:
         )
         return resp.text
 
-    # -- public API ------------------------------------------------------------------
+
 
     def fetch_articleset_xml(self, pmids: Sequence[str]) -> list[str]:
         """Return the raw PubmedArticleSet XML text of each efetch batch (1 per 200 PMIDs)."""
@@ -232,7 +232,7 @@ class PubMedFetcher:
                 raise PubMedFetchError(f"PMID {pmid} missing from efetch response")
         return records
 
-    # -- internals ---------------------------------------------------------------------
+
 
     def _fetch_elements(self, pmids: Sequence[str]) -> dict[str, ET.Element]:
         """Fetch and split the batched response into per-PMID article elements."""

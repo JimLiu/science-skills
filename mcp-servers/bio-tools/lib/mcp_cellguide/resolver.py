@@ -25,15 +25,15 @@ def normalize_cell_id(cell_id: str) -> str | None:
     Returns:
         Normalized ID (CL:XXXXXXX) or None if not a valid ID
     """
-    # Already in CL:XXXXXXX format
+
     if re.match(r"^CL:\d{7}$", cell_id):
         return cell_id
 
-    # CL_XXXXXXX format
+
     if re.match(r"^CL_\d{7}$", cell_id):
         return cell_id.replace("_", ":")
 
-    # Just the 7-digit number
+
     if re.match(r"^\d{7}$", cell_id):
         return f"CL:{cell_id}"
 
@@ -75,17 +75,23 @@ class CellTypeResolver:
         """
         query = query.strip()
 
-        # Try to parse as a cell ID
+
+
+
+        if not query:
+            return None
+
+
         normalized = normalize_cell_id(query)
         if normalized:
-            # Verify it exists in metadata
+
             info = await self.client.get_cell_info(normalized)
             if info:
                 return normalized
-            # ID format but doesn't exist
+
             return None
 
-        # Search by name/synonym
+
         matches = await self.client.search_cell_types(query, limit=1)
         if matches:
             return matches[0].get("id")

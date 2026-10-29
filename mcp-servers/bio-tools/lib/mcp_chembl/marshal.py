@@ -16,7 +16,7 @@ import json
 from collections import Counter
 from typing import Any
 
-# Per-component xref bound for target_search (see target_record).
+
 MAX_XREFS_PER_COMPONENT = 50
 
 
@@ -41,11 +41,11 @@ def _bool(x: Any) -> Any:
     return None if x is None else bool(x)
 
 
-# ── shared molecule_properties block ─────────────────────────────────────────
-# 16-key block exactly as the original emitted it inside compound_search and
-# drug_search records. `molecular_formula` renames the REST `full_molformula`;
-# `med_chem_friendly` and `molecular_species` are legacy fields no longer in
-# the REST payload — the original emitted them as null.
+
+
+
+
+
 
 def molecule_properties_block(mp: dict | None) -> dict | None:
     if mp is None:
@@ -70,7 +70,7 @@ def molecule_properties_block(mp: dict | None) -> dict | None:
     }
 
 
-# ── compound_search ──────────────────────────────────────────────────────────
+
 
 def compound_record(m: dict) -> dict:
     """Raw /molecule (or /similarity, /substructure) record -> the original
@@ -134,13 +134,13 @@ def compound_search_response(records: list[dict], total: int | None) -> dict:
         "count": len(compounds),
         "total": total,
         "compounds": compounds,
-        # NEW (additive): explicit truncation flag — `total` is the verified
-        # upstream page_meta.total_count, `count` what this page returned.
+
+
         "truncated": len(compounds) < total,
     }
 
 
-# ── drug_search ──────────────────────────────────────────────────────────────
+
 
 def drug_record(m: dict, joined: dict | None = None) -> dict:
     """Full /molecule record (+ the fleet's indication-join record) -> the
@@ -191,9 +191,9 @@ def drug_record(m: dict, joined: dict | None = None) -> dict:
         "usan_year": m.get("usan_year"),
         "withdrawn_flag": _bool(m.get("withdrawn_flag")),
     }
-    # NEW (additive): indication-join context from the fleet — which
-    # drug_indication rows matched, the best phase for THIS indication, and a
-    # de-duplicated withdrawal / black-box warning summary.
+
+
+
     if joined:
         rec["best_phase_for_ind"] = joined.get("best_phase_for_ind")
         rec["efo_terms"] = joined.get("efo_terms")
@@ -210,21 +210,21 @@ def drug_search_response(pairs: list[tuple[dict, dict]], total: int,
         "count": len(drugs),
         "total": total,
         "drugs": drugs,
-        # NEW (additive) fleet extras:
+
         "truncated": len(drugs) < total,
         "indication_query": indication_query,
         "total_indication_rows": total_indication_rows,
     }
 
 
-# ── get_admet ────────────────────────────────────────────────────────────────
+
 
 def admet_response(molecule: dict | None, molecule_chembl_id: str) -> dict:
     if molecule is None:
         return {
             "found": False,
             "properties": None,
-            # NEW (additive): say why nothing came back.
+
             "message": f"No molecule found for {molecule_chembl_id}",
         }
     mp = molecule.get("molecule_properties") or {}
@@ -249,7 +249,7 @@ def admet_response(molecule: dict | None, molecule_chembl_id: str) -> dict:
     }
 
 
-# ── get_bioactivity ──────────────────────────────────────────────────────────
+
 
 def activity_record(a: dict) -> dict:
     """Raw /activity record -> the original's 45-key shape (order per capture).
@@ -336,12 +336,12 @@ def bioactivity_response(raw_activities: list[dict], total: int | None) -> dict:
         "total": total,
         "activities": activities,
         "summary": _activity_summary(activities),
-        # NEW (additive): explicit truncation flag.
+
         "truncated": len(activities) < total,
     }
 
 
-# ── get_mechanism ────────────────────────────────────────────────────────────
+
 
 def mechanism_record(m: dict) -> dict:
     """Raw /mechanism record -> original shape: direct_interaction and
@@ -383,12 +383,12 @@ def mechanism_response(raw_mechanisms: list[dict], total: int | None) -> dict:
         "total": total,
         "mechanisms": mechanisms,
         "summary": summary,
-        # NEW (additive): explicit truncation flag.
+
         "truncated": len(mechanisms) < total,
     }
 
 
-# ── target_search ────────────────────────────────────────────────────────────
+
 
 def target_record(t: dict) -> dict:
     """Raw /target record -> original shape.
@@ -413,10 +413,10 @@ def target_record(t: dict) -> dict:
             "component_description": c.get("component_description"),
             "gene_symbol": gene_symbol,
             "relationship": c.get("relationship"),
-            # Bounded: popular targets carry ~900 xrefs apiece, and at the
-            # advertised limit=1000 the full join built a ~100-150 MB
-            # response in the one warm aggregate process (#2875 review,
-            # OOM blast radius). Truncation is explicit and additive.
+
+
+
+
             "target_component_xrefs": [
                 {"xref_id": x.get("xref_id"),
                  "xref_name": x.get("xref_name"),
@@ -448,6 +448,6 @@ def target_search_response(raw_targets: list[dict], total: int | None) -> dict:
         "count": len(targets),
         "total": total,
         "targets": targets,
-        # NEW (additive): explicit truncation flag.
+
         "truncated": len(targets) < total,
     }

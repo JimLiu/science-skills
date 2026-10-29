@@ -56,10 +56,10 @@ class ChebiClient:
         self.stats = TransportStats()
 
     def _throttle(self) -> None:
-        # PROCESS-wide per-host pacing via the shared HostPacer (review
-        # 3399242283): all EBI-facing clients in the one-process aggregate
-        # share one www.ebi.ac.uk budget instead of stacking per-instance
-        # clocks — same abstraction as the NCBI fix (3393212445).
+
+
+
+
         pace(DEFAULT_BASE_URL, self.min_interval_s)
 
     def get_json(self, path: str, params: dict | None = None) -> dict:
@@ -72,7 +72,7 @@ class ChebiClient:
                                         timeout=self.timeout_s)
             except requests.RequestException as exc:
                 last_err = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(2.0)
                 continue
             self.stats.requests += 1
@@ -83,11 +83,11 @@ class ChebiClient:
                 last_err = ChebiApiError(f"HTTP {resp.status_code}")
                 delay = retry_after_seconds(resp.headers.get("Retry-After", ""),
                                             2.0, cap=10.0)
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(delay)
                 continue
             if resp.status_code == 404:
-                # {"detail": "No Compound matches the given query."}
+
                 try:
                     detail = resp.json().get("detail", "")
                 except json.JSONDecodeError:

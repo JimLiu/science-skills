@@ -18,7 +18,7 @@ from typing import Any, Iterator
 
 from .client import BioStudiesClient
 
-# canonical flattened-record field order (also used by canonicalize())
+
 EXPERIMENT_RECORD_FIELDS = [
     "accession",
     "title",
@@ -45,9 +45,9 @@ EXPERIMENT_RECORD_FIELDS = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# generic section-tree helpers
-# ---------------------------------------------------------------------------
+
+
+
 
 def _attr_map(node: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     """name -> list of attribute dicts (attributes can repeat, e.g. Organism)."""
@@ -104,9 +104,9 @@ def _iter_links(node: Any) -> Iterator[dict[str, Any]]:
                     yield l
 
 
-# ---------------------------------------------------------------------------
-# flattening
-# ---------------------------------------------------------------------------
+
+
+
 
 def flatten_study(study_json: dict[str, Any]) -> dict[str, Any]:
     """Flatten a BioStudies study JSON (ArrayExpress experiment) into a single flat record."""
@@ -120,7 +120,7 @@ def flatten_study(study_json: dict[str, Any]) -> dict[str, Any]:
     organisms = sorted(set(_attr_values(section, "Organism")))
     description = _attr_value(section, "Description")
 
-    # Samples section: sample count, designs, factors
+
     sample_count = None
     experimental_designs: list[str] = []
     experimental_factors: list[str] = []
@@ -136,7 +136,7 @@ def flatten_study(study_json: dict[str, Any]) -> dict[str, Any]:
     experimental_designs = sorted(set(experimental_designs))
     experimental_factors = sorted(set(experimental_factors))
 
-    # Assays and Data: assay count, technology, assay by molecule
+
     assay_count = None
     technology = None
     assay_by_molecule = None
@@ -150,7 +150,7 @@ def flatten_study(study_json: dict[str, Any]) -> dict[str, Any]:
         technology = technology or _attr_value(aad, "Technology")
         assay_by_molecule = assay_by_molecule or _attr_value(aad, "Assay by Molecule")
 
-    # Authors (document order) and organizations
+
     org_names: dict[str, str] = {}
     for org in _sections_of_type(section, "Organization") + _sections_of_type(section, "Organisation"):
         accno = org.get("accno") or ""
@@ -169,7 +169,7 @@ def flatten_study(study_json: dict[str, Any]) -> dict[str, Any]:
         })
     submitter_organizations = sorted(set(org_names.values()))
 
-    # Publications
+
     publications: list[dict[str, Any]] = []
     for pub in _sections_of_type(section, "Publication"):
         publications.append({
@@ -181,11 +181,11 @@ def flatten_study(study_json: dict[str, Any]) -> dict[str, Any]:
         })
     publications.sort(key=lambda p: json.dumps(p, sort_keys=True))
 
-    # Protocols
+
     protocol_sections = _sections_of_type(section, "Protocols")
     protocol_types = sorted({t for p in protocol_sections for t in _attr_values(p, "Type") if t})
 
-    # Array designs (links of type "Array Design" anywhere in the tree)
+
     array_designs = sorted({
         l.get("url") for l in _iter_links(section)
         if l.get("url") and any(
@@ -194,7 +194,7 @@ def flatten_study(study_json: dict[str, Any]) -> dict[str, Any]:
         )
     })
 
-    # Files: count, per-type summary, total bytes
+
     files = list(_iter_files(section))
     files_by_type: dict[str, int] = {}
     total_bytes = 0
@@ -211,7 +211,7 @@ def flatten_study(study_json: dict[str, Any]) -> dict[str, Any]:
             total_bytes += int(size)
     files_by_type = dict(sorted(files_by_type.items()))
 
-    # Links summary (all link targets, sorted, with their declared type)
+
     links = sorted({
         (l.get("url") or "",
          next((a.get("value") for a in (l.get("attributes") or []) if a.get("name") == "Type"), ""))
@@ -262,9 +262,9 @@ def fetch_experiment(
     return record
 
 
-# ---------------------------------------------------------------------------
-# canonicalization (accuracy gate)
-# ---------------------------------------------------------------------------
+
+
+
 
 def canonicalize(record: Any) -> bytes:
     """Canonical JSON bytes for gate comparison.

@@ -30,15 +30,15 @@ def to_url_format(cell_id: str) -> str:
         CL_0000622 -> CL_0000622
         0000622 -> CL_0000622
     """
-    # Already in URL format
+
     if "_" in cell_id and cell_id.startswith("CL_"):
         return cell_id
 
-    # Colon format
+
     if ":" in cell_id:
         return cell_id.replace(":", "_")
 
-    # Just the number
+
     if cell_id.isdigit():
         return f"CL_{cell_id}"
 
@@ -54,15 +54,15 @@ def to_json_format(cell_id: str) -> str:
         CL:0000622 -> CL:0000622
         0000622 -> CL:0000622
     """
-    # Already in JSON format
+
     if ":" in cell_id and cell_id.startswith("CL:"):
         return cell_id
 
-    # Underscore format
+
     if "_" in cell_id:
         return cell_id.replace("_", ":")
 
-    # Just the number
+
     if cell_id.isdigit():
         return f"CL:{cell_id}"
 
@@ -90,11 +90,11 @@ class CellGuideClient:
         self.timeout = timeout
         self._http_client: httpx.AsyncClient | None = None
         self._client_loop: asyncio.AbstractEventLoop | None = None
-        # Guards the check-create-return in _get_client: worker loops run on
-        # distinct threads against this shared singleton (review 3385963086).
+
+
         self._client_rebind_lock = threading.Lock()
 
-        # Cached data
+
         self._snapshot_id: str | None = None
         self._celltype_metadata: dict[str, Any] | None = None
         self._tissue_metadata: dict[str, Any] | None = None
@@ -106,12 +106,12 @@ class CellGuideClient:
         The bio aggregate dispatches each tool call on a fresh worker event
         loop (mcp_bio/server.py worker dispatch), so a client cached across
         calls holds a connection pool bound to a closed loop — the 2nd call
-        raises "Event loop is closed" (#2875 review 3383183332). Re-create
+        raises "Event loop is closed". Re-create
         when the running loop changes; standalone single-loop serving keeps
         full connection reuse. The superseded client is dropped un-awaited
         (its loop is gone; transports are already dead).
 
-        Concurrency (#2875 review 3385963086): the instance is a module-level
+        Concurrency: the instance is a module-level
         singleton and worker loops run on distinct threads, so the
         check-create-return must be atomic and must return the client chosen
         UNDER the lock — re-reading the shared attribute after unlocking can
@@ -126,11 +126,11 @@ class CellGuideClient:
                 self._client_loop = loop
             client = self._http_client
         if stale is not None:
-            # Best-effort deterministic teardown of the superseded client
-            # (review 3386234831): aclose() from this (new) loop succeeds for
-            # idle pools; anything still bound to the dead loop raises and
-            # falls back to GC exactly as before — never worse, usually
-            # no ResourceWarning.
+
+
+
+
+
             try:
                 await stale.aclose()
             except Exception:
@@ -262,7 +262,7 @@ class CellGuideClient:
         url_id = to_url_format(cell_id)
         client = await self._get_client()
 
-        # Try validated description first
+
         validated_url = f"{BASE_URL}/validated_descriptions/{quote(url_id, safe='')}.json"
         try:
             response = await client.get(validated_url)
@@ -276,12 +276,12 @@ class CellGuideClient:
         except Exception as e:
             logger.debug(f"No validated description for {cell_id}: {e}")
 
-        # Fall back to GPT description
+
         gpt_url = f"{BASE_URL}/gpt_descriptions/{quote(url_id, safe='')}.json"
         try:
             response = await client.get(gpt_url)
             if response.status_code == 200:
-                # GPT descriptions are just a string
+
                 text = response.json()
                 if isinstance(text, str):
                     return {"description": text, "references": [], "source": "gpt"}
@@ -318,7 +318,7 @@ class CellGuideClient:
             if response.status_code == 200 and response.text.strip():
                 genes = response.json()
                 if isinstance(genes, list):
-                    # Sort by marker_score descending and limit
+
                     genes.sort(key=lambda g: g.get("marker_score", 0), reverse=True)
                     return genes[:limit]
             return []
@@ -363,7 +363,7 @@ class CellGuideClient:
         """
         json_id = to_json_format(cell_id)
 
-        # Get mapping and tissue metadata
+
         mapping = await self.get_tissue_mapping()
         tissue_metadata = await self.get_tissue_metadata()
 
@@ -404,20 +404,20 @@ class CellGuideClient:
             name = info.get("name", "").lower()
             synonyms = [s.lower() for s in info.get("synonyms", [])]
 
-            # Check name match
+
             if query_lower in name:
                 score = 100 if name == query_lower else (90 if name.startswith(query_lower) else 50)
                 matches.append((score, info))
                 continue
 
-            # Check synonym match
+
             for syn in synonyms:
                 if query_lower in syn:
                     score = 80 if syn == query_lower else (70 if syn.startswith(query_lower) else 40)
                     matches.append((score, info))
                     break
 
-        # Sort by score descending, then by name
+
         matches.sort(key=lambda x: (-x[0], x[1].get("name", "")))
 
         return [info for _, info in matches[:limit]]

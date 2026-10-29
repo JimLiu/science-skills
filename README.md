@@ -8,6 +8,18 @@ servers expose scientific data and chemistry tools.
 
 ## Source
 
+The `skills/` and `mcp-servers/` assets match **Claude Science 0.1.71**
+(public release, macOS arm64, built October 26, 2026). They are copied directly
+from the app's embedded asset archive, including helper code, dependencies,
+licenses, and widget assets.
+
+`VERSION` records this asset snapshot version. `SOURCE.json` records the app's
+build metadata, source checksums, and file-tree checksums for both directories.
+Upstream package manifests and skill metadata are preserved verbatim; their
+dependency versions are independent of the app version. The base prompt and
+agent profiles are retained from the earlier repository snapshot and are not
+covered by this version marker.
+
 The base prompt and bundled skills in this repository are sourced from the
 Claude Science product. The public product page is available for context:
 https://claude.com/product/claude-science.

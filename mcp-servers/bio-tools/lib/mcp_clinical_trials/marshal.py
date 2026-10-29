@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-# The original connector emits compact JSON (no whitespace), non-ASCII kept.
+
 import json
 
 
@@ -35,7 +35,7 @@ def compact_json(obj: object) -> str:
     return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
 
 
-# ── raw-record accessors ─────────────────────────────────────────────────────
+
 
 def _module(study: dict, name: str) -> dict:
     return (study.get("protocolSection") or {}).get(name) or {}
@@ -45,7 +45,7 @@ def _struct_date(module: dict, key: str) -> str | None:
     return (module.get(key) or {}).get("date")
 
 
-# ── search items (search_trials / search_by_sponsor / search_by_eligibility) ─
+
 
 def trial_summary(study: dict) -> dict[str, Any]:
     """One search-result item in the original connector's shape."""
@@ -84,7 +84,7 @@ def search_response(page: dict, count_total: bool) -> dict[str, Any]:
     }
 
 
-# ── get_trial_details ────────────────────────────────────────────────────────
+
 
 def _outcomes(outcomes_module: dict, key: str, type_label: str) -> list[dict] | None:
     raw = outcomes_module.get(key)
@@ -163,7 +163,7 @@ def trial_not_found_response(nct_id: str, error: str) -> dict[str, Any]:
     return {"found": False, "nct_id": nct_id, "error": error}
 
 
-# ── analyze_endpoints ────────────────────────────────────────────────────────
+
 
 def endpoints_response(studies: list[dict],
                        nct_id: str | None,
@@ -203,7 +203,7 @@ def endpoints_response(studies: list[dict],
     }
 
 
-# ── search_investigators ─────────────────────────────────────────────────────
+
 
 def investigators_response(studies: list[dict]) -> dict[str, Any]:
     """Collect investigators/contacts from the analyzed trials' site

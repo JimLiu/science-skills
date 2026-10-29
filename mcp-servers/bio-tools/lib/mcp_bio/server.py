@@ -33,6 +33,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
+from mcp_servers_common.gate import no_bulk
 from mcp_servers_common.tier1 import READ_ONLY
 
 SERVER_NAME = "bio-mcp-server"
@@ -74,27 +75,31 @@ def load_domains() -> dict[str, list[str]]:
 
 
 def load_deferred() -> dict:
-    """Deferral gate, two independent criteria:
+    """Deferral gate, three independent criteria:
 
     - ``domains``/``tools``: NET-NEW upstream resources vs operon main,
-      deferred pending separate legal review. The stacked PR empties these
-      lists to enable them — tests and the startup self-check all key off
+      deferred pending separate legal review. Emptying these lists enables
+      them — tests and the startup self-check all key off
       this file, so that flip is the single knob.
     - ``license_tools``: upstream LICENSE forbids/restricts commercial use
       (KEGG academic-only, CADD non-commercial, PanglaoDB). Deliberately not
       on the stacked PR's flip — lifted per-upstream when legal clears the
       specific license.
+    - ``unavailable_tools``: the upstream service is retired, refuses
+      these servers' requests, does not finish them in time or fails these
+      servers' certificate check, so every call fails.
 
     Fails CLOSED on typos: every named domain/tool must exist in
     domains.json — an unknown slug previously fell out of the gate silently
-    with every tripwire still green (#2875 review)."""
+    with every tripwire still green."""
     with resources.files(__package__).joinpath("deferred.json").open("r") as f:
         deferred = json.load(f)
     domains = load_domains()
     all_tools = {n for tools in domains.values() for n in tools}
     bad_domains = set(deferred.get("domains", [])) - set(domains)
     bad_tools = (set(deferred.get("tools", []))
-                 | set(deferred.get("license_tools", []))) - all_tools
+                 | set(deferred.get("license_tools", []))
+                 | set(deferred.get("unavailable_tools", []))) - all_tools
     if bad_domains or bad_tools:
         raise ValueError(
             "deferred.json names entries unknown to domains.json (a typo "
@@ -105,11 +110,12 @@ def load_deferred() -> dict:
 
 def deferred_tool_names() -> set[str]:
     """All tool names excluded by the deferral gate (whole deferred domains
-    plus individually deferred tools, on either criterion)."""
+    plus individually deferred tools, on any criterion)."""
     deferred = load_deferred()
     domains = load_domains()
     names: set[str] = set(deferred.get("tools", []))
     names.update(deferred.get("license_tools", []))
+    names.update(deferred.get("unavailable_tools", []))
     for d in deferred.get("domains", []):
         names.update(domains.get(d, []))
     return names
@@ -127,18 +133,18 @@ class BioAggregate:
         skip_pkgs = {_pkg_for_domain(d) for d in deferred.get("domains", [])}
         skip_tools = deferred_tool_names()
 
-        # tier-1: verbatim schemas + sync handlers
+
         self.t1_schemas: list[dict] = []
         self.t1_handlers: dict[str, object] = {}
-        # Per-domain serialization (reviews 3386234819, 3386420557): worker
-        # -thread dispatch runs same-domain calls concurrently, but each
-        # domain funnels into ONE process-wide client wrapping a
-        # requests.Session (not thread-safe) with non-atomic stats writes.
-        # One anyio.Lock per source package, acquired ON THE EVENT LOOP
-        # before entering the thread pool — a parked same-domain call waits
-        # as a coroutine instead of pinning one of anyio's ~40 shared worker
-        # tokens, so a same-domain pile-up can never starve cross-domain
-        # calls (the reason the worker dispatch exists).
+
+
+
+
+
+
+
+
+
         self.domain_locks: dict[str, anyio.Lock] = {}
         self.t1_locks: dict[str, anyio.Lock] = {}
         for pkg in TIER1_PACKAGES:
@@ -157,7 +163,7 @@ class BioAggregate:
                 s for s in t1.schemas if s["name"] not in skip_tools
             )
 
-        # tier-2: FastMCP instances; dispatch map tool -> fm
+
         self.t2_fm: dict[str, object] = {}
         self.t2_locks: dict[str, anyio.Lock] = {}
         for pkg in TIER2_PACKAGES:
@@ -203,11 +209,11 @@ def build_server() -> tuple[Server, BioAggregate]:
             if any(fm is f for f in seen_fm):
                 continue
             seen_fm.append(fm)
-            # The dispatch map IS the served surface: fm.list_tools() returns
-            # the instance's FULL registered set, unfiltered by deferred.json
-            # — an individually-deferred tier-2 tool would be advertised yet
-            # raise "Unknown tool" on call, re-exposing the gated upstream
-            # (review 3383284164). List only what _call_tool dispatches.
+
+
+
+
+
             tools.extend(
                 t for t in await fm.list_tools() if t.name in agg.t2_fm
             )
@@ -218,31 +224,31 @@ def build_server() -> tuple[Server, BioAggregate]:
         args = dict(arguments or {})
         handler = agg.t1_handlers.get(tool)
         if handler is not None:
-            # Same-domain serialization on the EVENT LOOP (reviews
-            # 3386234819, 3386420557): waiting here is a parked coroutine,
-            # not a parked worker thread holding a shared limiter token.
+
+
+
             async with agg.t1_locks[tool]:
                 text = await anyio.to_thread.run_sync(lambda: handler(args))
             return [TextContent(type="text", text=text)]
         fm = agg.t2_fm.get(tool)
         if fm is None:
             raise ValueError(f"Unknown tool: {tool}")
-        # CRITICAL: never run tier-2 tools on the server's event loop. The
-        # mcp SDK's FastMCP calls SYNC tool functions inline (no to_thread —
-        # func_metadata.call_fn_with_arg_validation), and every tier-2 tool
-        # does blocking HTTP, so one slow upstream would freeze the entire
-        # server — including local-only tools (found by stress test: a broad
-        # pride_search_projects wedged everything for 10+ minutes). Dispatch
-        # the whole fm.call_tool coroutine into a worker thread with its own
-        # event loop; sync AND async (cellguide) tools both work there, and
-        # the main loop stays free to serve concurrent requests.
+
+
+
+
+
+
+
+
+
         def _run_in_worker() -> object:
             return anyio.run(fm.call_tool, tool, args)
 
-        # Pass-through: FastMCP returns ContentBlocks or a structured dict;
-        # the low-level Server accepts both (content / structuredContent).
-        # Same-domain serialization on the EVENT LOOP — see t1 above
-        # (reviews 3386234819, 3386420557).
+
+
+
+
         async with agg.t2_locks[tool]:
             return await anyio.to_thread.run_sync(_run_in_worker)
 
@@ -250,6 +256,10 @@ def build_server() -> tuple[Server, BioAggregate]:
 
 
 def main() -> None:
+    if no_bulk():
+        raise RuntimeError(
+            "OPERON_MCP_NO_BULK is set and the aggregate cannot apply it. Run "
+            "one domain instead: run_server.py mcp_<domain>")
     server, _ = build_server()
 
     async def _main() -> None:

@@ -3,7 +3,7 @@
 Politeness: requests are paced at gnomAD's published limit of 10 queries per
 minute per IP (min_interval_s=6.0), enforced process-wide via
 mcp_servers_common.ratelimit (the earlier 0.5 s default ran 12x over the
-published cap — #2875 review). Retries 429/5xx and transport errors with
+published cap). Retries 429/5xx and transport errors with
 exponential backoff. The gnomAD API is GraphQL-only: every call is a POST of
 {"query": ..., "variables": ...} to https://gnomad.broadinstitute.org/api.
 """
@@ -33,14 +33,14 @@ class NotFound(GnomadApiError):
 class TransportStats:
     requests: int = 0
     bytes_downloaded: int = 0
-    raw_bodies: list = field(default_factory=list)  # populated only when capture_raw=True
+    raw_bodies: list = field(default_factory=list)
 
 
 class GnomadClient:
     """GraphQL POST client returning the parsed ``data`` payload."""
 
     RETRY_STATUSES = {429, 500, 502, 503, 504}
-    # GraphQL error messages that mean "entity absent", not "request failed".
+
     NOT_FOUND_MESSAGES = {
         "variant not found",
         "gene not found",
@@ -64,7 +64,7 @@ class GnomadClient:
         self._last_request_t = 0.0
 
     def _throttle(self) -> None:
-        # Process-wide per-host pacing (mcp_servers_common.ratelimit).
+
         pace(self.base_url, self.min_interval_s)
 
     def query(self, document: str, variables: dict | None = None):
@@ -83,7 +83,7 @@ class GnomadClient:
             except requests.RequestException as exc:
                 self._last_request_t = time.monotonic()
                 last_err = exc
-                if attempt < self.max_retries - 1:  # no dead sleep on the last try
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2 ** attempt, 30))
                 continue
             self._last_request_t = time.monotonic()
@@ -93,18 +93,18 @@ class GnomadClient:
                 last_err = GnomadApiError(f"HTTP {resp.status_code}")
                 retry_after = resp.headers.get("Retry-After", "")
                 if resp.status_code == 429:
-                    # gnomAD does not send Retry-After; its burst limiter needs
-                    # a long cool-down, not exponential milliseconds. Capped so
-                    # a wedged upstream can't pin an aggregate worker thread
-                    # for the whole schedule (#2875 review, robustness).
+
+
+
+
                     fallback = min(60.0 * (attempt + 1), 120.0)
                 else:
                     fallback = min(2 ** attempt, 30)
-                # Concrete fallback — passing the still-unbound `delay` was an
-                # UnboundLocalError on the first retryable response carrying
-                # Retry-After (review 3390063502).
+
+
+
                 delay = retry_after_seconds(retry_after, fallback)
-                if attempt < self.max_retries - 1:  # no dead sleep on the last try
+                if attempt < self.max_retries - 1:
                     time.sleep(delay)
                 continue
             if resp.status_code != 200:
@@ -113,7 +113,7 @@ class GnomadClient:
                 payload = resp.json()
             except json.JSONDecodeError as exc:
                 last_err = exc
-                if attempt < self.max_retries - 1:  # no dead sleep on the last try
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2 ** attempt, 30))
                 continue
             if self.capture_raw:

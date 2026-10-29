@@ -24,22 +24,24 @@ import math
 from functools import lru_cache
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
-mcp = FastMCP("mcp-human-genetics")
+
+
+mcp = GuardedFastMCP("mcp-human-genetics")
 
 DEFAULT_MAX_RECORDS = 500
 DEFAULT_MAX_PHENOS = 200
 
 
-# One fleet tool instance per process; fleet clients pace/retry internally
-# (<= 2 req/s per host, <= 1 retry, 30 s timeouts).
+
+
 @lru_cache(maxsize=1)
 def _gwas():
     from gwas_catalog import GwasCatalog
@@ -76,7 +78,7 @@ def _significance(row: dict):
     if pval is None:
         return None
     if pval <= 0.0:
-        return math.inf          # underflowed p reported as 0
+        return math.inf
     return -math.log10(pval)
 
 
@@ -92,7 +94,7 @@ def _cap_rows(rows: list, max_records: int) -> dict[str, Any]:
             "truncated": len(rows) > max_records, "rows": rows[:max_records]}
 
 
-# ------------------------------------------------------------ GWAS Catalog ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 def gwas_associations_for_variant(rs_id: str,
@@ -149,7 +151,10 @@ def gwas_associations_for_gene(gene_symbol: str,
     return {"gene_symbol": gene_symbol.strip(), **out}
 
 
-@mcp.tool(annotations=READ_ONLY)
+
+
+
+@mcp.tool(annotations=READ_ONLY, blank_as_absent={"efo_id", "efo_trait"})
 def gwas_associations_for_trait(efo_id: str | None = None,
                                 efo_trait: str | None = None,
                                 max_records: int = DEFAULT_MAX_RECORDS) -> dict:
@@ -174,10 +179,10 @@ def gwas_associations_for_trait(efo_id: str | None = None,
     ``gwas_associations_for_variant``. An unknown id/label returns
     ``api_total=0``, not an error.
     """
-    # Unify the guard and the filter builder on the same notion of
-    # "provided" — truthiness after strip — so efo_id="" (common from LLM
-    # callers) is rejected cleanly instead of slipping past the is-None
-    # guard into efo_trait.strip() on None (finding 3406986043).
+
+
+
+
     _efo_id = (efo_id or "").strip()
     _efo_trait = (efo_trait or "").strip()
     if bool(_efo_id) == bool(_efo_trait):
@@ -206,6 +211,12 @@ def gwas_search_traits(query: str,
     each row ``{efo_id, efo_trait, uri}``, sorted by label. Count-verified
     against the catalog's own total when not capped.
     """
+
+
+
+
+    if not query.strip():
+        raise ValueError("query must be non-empty")
     out = _gwas().search_traits(query.strip(), max_records)
     return {"query": query.strip(), **out}
 
@@ -293,7 +304,7 @@ def gwas_get_variant(rs_id: str) -> dict:
     return {"found": True, "rs_id": rid, "variant": rec}
 
 
-# ----------------------------------------------------------- eQTL Catalogue ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 def eqtl_list_datasets(study_label: str | None = None,
@@ -390,7 +401,7 @@ def eqtl_associations(dataset_id: str,
     return {**out, "filters": filters}
 
 
-# ------------------------------------------------------------ PheWeb portals ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 def phewas_instances() -> dict:
@@ -533,10 +544,10 @@ def phewas_search_phenotypes(query: str, instance: str = "finngen",
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

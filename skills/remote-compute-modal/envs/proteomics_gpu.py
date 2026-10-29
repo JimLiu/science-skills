@@ -18,13 +18,13 @@ META = {
     "packages": ["chai_lab", "torch", "transformers", "Bio"],
     "gpu_default": "A100-80GB",
     "supersedes": ["chai_lab", "mmseqs2_gpu", "mpnn", "esm", "transformers_bio"],
-    # JOB-time only (see proteomics_jax_gpu for the field contract).
-    #   api.colabfold.com         remote MSA server (default --msa-mode).
-    #   huggingface.co, *.hf.co   chai_lab + EsmModel weights via the HF Hub CDNs.
-    #   chaiassets.com            Chai-1's first-inference components (~5 GB).
-    # github.com is deliberately NOT declared: it is a generic write-capable
-    # host (the same class the HF hub was dropped from the seed for), and the
-    # one consumer — ProteinMPNN — is baked into the image at build time below.
+
+
+
+
+
+
+
     "egress_domains": [
         "api.colabfold.com",
         "huggingface.co",
@@ -60,8 +60,8 @@ def build(
             f"echo '{_MMSEQS_SHA256}  /tmp/mm.tar.gz' | sha256sum -c",
             "tar xzf /tmp/mm.tar.gz -C /opt",
             "ln -s /opt/mmseqs/bin/mmseqs /usr/local/bin/mmseqs",
-            # ProteinMPNN has no PyPI dist — baked at build (unfenced) so the
-            # fenced job needs no github.com egress. Pinned 2026-06-28.
+
+
             "git clone https://github.com/dauparas/ProteinMPNN.git"
             " /app/proteinmpnn && git -C /app/proteinmpnn checkout"
             " 8907e6671bfbfc92303b5f79c4b5e6ce47cdef57",
@@ -76,4 +76,4 @@ def build(
     return img, vols, dict(_ENV)
 
 
-# chai_lab fetches lazily on first inference; no pre-hydrate.
+

@@ -27,9 +27,9 @@ def _call_claude(prompt: str, model: str | None, timeout: int = 300) -> str:
     if model:
         cmd.extend(["--model", model])
 
-    # Remove CLAUDECODE env var to allow nesting claude -p inside a
-    # Claude Code session. The guard is for interactive terminal conflicts;
-    # programmatic subprocess usage is safe. Same pattern as run_eval.py.
+
+
+
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
 
     result = subprocess.run(
@@ -68,7 +68,7 @@ def improve_description(
         if not r["should_trigger"] and not r["pass"]
     ]
 
-    # Build scores summary
+
     train_score = f"{eval_results['summary']['passed']}/{eval_results['summary']['total']}"
     if test_results:
         test_score = f"{test_results['summary']['passed']}/{test_results['summary']['total']}"
@@ -155,11 +155,11 @@ Please respond with only the new description text in <new_description> tags, not
         "over_limit": len(description) > 1024,
     }
 
-    # Safety net: the prompt already states the 1024-char hard limit, but if
-    # the model blew past it anyway, make one fresh single-turn call that
-    # quotes the too-long version and asks for a shorter rewrite. (The old
-    # SDK path did this as a true multi-turn; `claude -p` is one-shot, so we
-    # inline the prior output into the new prompt instead.)
+
+
+
+
+
     if len(description) > 1024:
         shorten_prompt = (
             f"{prompt}\n\n"
@@ -229,7 +229,7 @@ def main():
     if args.verbose:
         print(f"Improved: {new_description}", file=sys.stderr)
 
-    # Output as JSON with both the new description and updated history
+
     output = {
         "description": new_description,
         "history": history + [{

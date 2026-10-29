@@ -16,16 +16,16 @@ import requests
 
 MARKER_URL = "https://panglaodb.se/markers/PanglaoDB_markers_27_Mar_2020.tsv.gz"
 
-# sha256 of the gzip file as served upstream (captured 2026-06-08; the file is
-# static upstream since 2020, so any mismatch means corruption or tampering).
+
+
 MARKER_SHA256 = "6779952ad40aa5a124de7bd0e18975c6630bd6006d6b3ef210a916caaa6b53c9"
 
-# PanglaoDB's web server 403s default library User-Agents. Earlier revisions
-# spoofed a browser Chrome UA to defeat that block; that circumvented the
-# operator's access policy, so the client now identifies itself honestly.
-# Downloads will 403 until the operator permits this UA — the panglaodb_*
-# tools are deferred (mcp_bio/deferred.json license gate) pending legal /
-# operator clearance, so nothing served depends on this fetch succeeding.
+
+
+
+
+
+
 CLIENT_UA = "bio-tools-panglaodb-markers/1.0 (anthropic-experimental/bio-tools)"
 
 _FILENAME = "PanglaoDB_markers_27_Mar_2020.tsv.gz"
@@ -72,7 +72,7 @@ def fetch_markers_gz(
     if path.exists() and not force:
         if not verify_checksum or _sha256_file(path) == MARKER_SHA256:
             return path
-        # stale/corrupt cache: fall through to re-download
+
 
     getter = session if session is not None else requests
     resp = getter.get(MARKER_URL, headers={"User-Agent": CLIENT_UA}, timeout=timeout)

@@ -26,10 +26,10 @@ import inspect
 from mcp.server.fastmcp.exceptions import ToolError
 
 
-# Size guard: a legitimate record that happens to carry an ``error`` field
-# among many keys (e.g. an upstream row with an ``error`` column) must not
-# trip the envelope. Every in-tree error dict is 1-3 keys (error /
-# error+message / error+suggestions).
+
+
+
+
 _ERROR_PAYLOAD_MAX_KEYS = 3
 
 
@@ -37,9 +37,9 @@ def is_error_payload(result: object) -> bool:
     """True iff ``result`` is an error-shaped dict that should surface as
     ``isError=True`` instead of a green success."""
     return (isinstance(result, dict)
-            # Truthy: success payloads that carry ``"error": None`` alongside
-            # data (bioRxiv's categories/preprint/statistics shapes — three
-            # keys incl. ``error: None``) must NOT trip this (bh 3476158268).
+
+
+
             and bool(result.get("error"))
             and len(result) <= _ERROR_PAYLOAD_MAX_KEYS)
 

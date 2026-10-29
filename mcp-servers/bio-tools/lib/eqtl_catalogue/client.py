@@ -54,17 +54,17 @@ class EqtlClient:
         self.base_url = base_url.rstrip("/")
         self.min_interval_s = min_interval_s
         self.timeout_s = timeout_s
-        self.max_retries = max_retries  # total attempts (2 == one retry)
+        self.max_retries = max_retries
         self.session = session or requests.Session()
         self.session.headers.update({"Accept": "application/json",
                                      "User-Agent": USER_AGENT})
         self.stats = TransportStats()
 
     def _throttle(self) -> None:
-        # PROCESS-wide per-host pacing via the shared HostPacer (review
-        # 3399242283): all EBI-facing clients in the one-process aggregate
-        # share one www.ebi.ac.uk budget instead of stacking per-instance
-        # clocks — same abstraction as the NCBI fix (3393212445).
+
+
+
+
         pace(BASE_URL, self.min_interval_s)
 
     def get_json(self, path: str, params: dict | None = None):
@@ -76,7 +76,7 @@ class EqtlClient:
                 resp = self.session.get(url, params=params, timeout=self.timeout_s)
             except requests.RequestException as exc:
                 last_err = exc
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2 ** attempt, 4))
                 continue
             self.stats.requests += 1
@@ -93,7 +93,7 @@ class EqtlClient:
                 last_err = EqtlApiError(f"HTTP {resp.status_code} for {url}")
                 retry_after = resp.headers.get("Retry-After", "")
                 delay = retry_after_seconds(retry_after, min(2 ** attempt, 4), cap=5.0)
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(delay)
                 continue
             if resp.status_code != 200:
@@ -129,7 +129,7 @@ class EqtlCatalogue:
         start, pages = 0, 0
         while True:
             want = max_records - len(rows)
-            size = min(self.page_size, want + 1)  # peek one past the cap
+            size = min(self.page_size, want + 1)
             q = dict(params)
             q.update({"start": start, "size": size})
             batch = self.client.get_json(path, params=q)
@@ -137,14 +137,14 @@ class EqtlCatalogue:
                 raise EqtlApiError(f"unexpected non-list payload from {path}")
             rows.extend(batch)
             if len(batch) < size:
-                # exhausted upstream — complete unless the peek row exists
+
                 return rows[:max_records], len(rows) > max_records
             if len(rows) > max_records:
-                return rows[:max_records], True   # surplus row observed
+                return rows[:max_records], True
             if pages >= MAX_PAGES - 1:
-                # Page budget spent without observing a surplus row (a large
-                # cap defeats the +1 peek). Probe one row past what we have
-                # so an exactly-exhausted walk isn't misreported as capped.
+
+
+
                 q = dict(params)
                 q.update({"start": start + len(batch), "size": 1})
                 peek = self.client.get_json(path, params=q)
@@ -161,9 +161,9 @@ class EqtlCatalogue:
 
     def associations(self, dataset_id: str, filters: dict[str, Any],
                      max_records: int) -> dict[str, Any]:
-        # Dataset ids follow the QTD grammar (QTD + digits, e.g. QTD000584).
-        # Validate instead of percent-encoding: a non-conforming id can never
-        # reshape the request path, and the error names the expected shape.
+
+
+
         did = str(dataset_id).strip()
         if not re.fullmatch(r"QTD\d+", did):
             raise EqtlApiError(

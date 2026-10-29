@@ -9,8 +9,11 @@ citations/references, check OA status and venues, profile authors, and
 reach physics/CS/stats preprints.
 
 Retrieval is done by the fleet packages ``openalex-works`` (paced
-<= 2 req/s, polite pool via mailto) and ``arxiv-fetch`` (paced >= 3 s
-between requests per the arXiv ToS); this layer is marshalling only.
+<= 2 req/s; authenticates every request with the user's OpenAlex
+``api_key`` — OpenAlex has no anonymous access, so a missing key
+surfaces as a structured ``openalex_key_required`` tool result) and
+``arxiv-fetch`` (paced >= 3 s between requests per the arXiv ToS); this
+layer is marshalling only.
 Every listing is honest: ``api_total`` carries the upstream's own count
 and ``records_truncated`` flags any cap.
 """
@@ -19,19 +22,30 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
+from mcp_servers_common.criteria import blank, none_if_blank, reject_blank
 from mcp_servers_common.gate import apply_gate_fastmcp
+from mcp_servers_common.ua import OpenAlexKeyRequired
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
-mcp = FastMCP("mcp-literature")
 
 
-# One fleet tool instance per process; fleet clients pace/retry internally
-# (OpenAlex >= 0.5 s between requests, arXiv >= 3 s).
+mcp = GuardedFastMCP("mcp-literature")
+
+
+
+
+
+def _openalex_key_result(e: OpenAlexKeyRequired) -> dict:
+    return {"error": "openalex_key_required", "message": str(e)}
+
+
+
+
 @lru_cache(maxsize=1)
 def _openalex():
     from openalex_works import OpenAlexWorks
@@ -44,9 +58,12 @@ def _arxiv():
     return ArxivFetch()
 
 
-# ------------------------------------------------------------- OpenAlex ---
 
-@mcp.tool(annotations=READ_ONLY)
+
+
+
+
+@mcp.tool(annotations=READ_ONLY, blank_as_absent={"query"})
 def openalex_search_works(query: str | None = None,
                           year_from: int | None = None,
                           year_to: int | None = None,
@@ -98,11 +115,26 @@ def openalex_search_works(query: str | None = None,
     referenced_works_count, open_access{is_oa, oa_status, oa_url},
     best_oa_pdf_url, primary_topic, keywords}``.
     """
-    return _openalex().search_works(
-        query=query, year_from=year_from, year_to=year_to,
-        work_type=work_type, open_access_only=open_access_only,
-        venue=venue, sort=sort, max_records=max_records,
-        include_abstracts=include_abstracts)
+
+
+
+
+
+
+
+
+
+
+    query = none_if_blank(query)
+    reject_blank(venue=venue)
+    try:
+        return _openalex().search_works(
+            query=query, year_from=year_from, year_to=year_to,
+            work_type=work_type, open_access_only=open_access_only,
+            venue=venue, sort=sort, max_records=max_records,
+            include_abstracts=include_abstracts)
+    except OpenAlexKeyRequired as e:
+        return _openalex_key_result(e)
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -129,7 +161,10 @@ def openalex_get_work(work_id: str) -> dict:
     citation counts) + ``doi_resolution_note`` are included so the choice
     is visible. Raises a not-found error for unknown IDs/DOIs.
     """
-    return _openalex().get_work(work_id)
+    try:
+        return _openalex().get_work(work_id)
+    except OpenAlexKeyRequired as e:
+        return _openalex_key_result(e)
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -160,9 +195,12 @@ def openalex_citations(work_id: str, sort: str = "cited_by_count",
     DOI tags (``doi_claimants`` + ``doi_resolution_note`` appear in the
     output when that happens — see ``openalex_get_work``).
     """
-    return _openalex().citations(work_id, sort=sort,
-                                 max_records=max_records,
-                                 include_abstracts=include_abstracts)
+    try:
+        return _openalex().citations(work_id, sort=sort,
+                                     max_records=max_records,
+                                     include_abstracts=include_abstracts)
+    except OpenAlexKeyRequired as e:
+        return _openalex_key_result(e)
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -184,7 +222,10 @@ def openalex_references(work_id: str, max_records: int = 100) -> dict:
     works) cannot be hydrated — their IDs are listed explicitly in
     ``references_not_hydrated``, never silently dropped.
     """
-    return _openalex().references(work_id, max_records=max_records)
+    try:
+        return _openalex().references(work_id, max_records=max_records)
+    except OpenAlexKeyRequired as e:
+        return _openalex_key_result(e)
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -203,7 +244,15 @@ def openalex_search_authors(query: str, max_records: int = 25) -> dict:
     years}], last_known_institutions, top_topics}``. Use the
     ``author_id`` with ``openalex_get_author`` for a works sample.
     """
-    return _openalex().search_authors(query, max_records=max_records)
+
+
+
+    if blank(query):
+        raise ValueError("query must be non-empty")
+    try:
+        return _openalex().search_authors(query, max_records=max_records)
+    except OpenAlexKeyRequired as e:
+        return _openalex_key_result(e)
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -224,7 +273,10 @@ def openalex_get_author(author_id: str, works_sample: int = 10) -> dict:
     (the author's true total works count per the works index) and
     ``top_works`` (lean work records sorted by citations, no abstracts).
     """
-    return _openalex().get_author(author_id, works_sample=works_sample)
+    try:
+        return _openalex().get_author(author_id, works_sample=works_sample)
+    except OpenAlexKeyRequired as e:
+        return _openalex_key_result(e)
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -248,28 +300,40 @@ def openalex_venue_info(venue: str, max_records: int = 10) -> dict:
     is_core, apc_usd, works_count, cited_by_count, h_index,
     two_year_mean_citedness, first/last_publication_year, top_topics}``.
     """
+
+
+    if blank(venue):
+        raise ValueError("venue must be non-empty")
     tool = _openalex()
     from openalex_works import normalize_source_id
     try:
         normalize_source_id(venue)
     except ValueError:
-        # normalize_source_id raises for BOTH a plain journal name (→ name
-        # search) and a wrong-entity openalex.org URL (a W…/A… id the _url_id
-        # cure rejects). Only the former may fall through to a name search —
-        # name-searching a URL string returns a confident empty, defeating
-        # the cure (finding 3406986052). Re-raise with guidance for a URL.
+
+
+
+
+
         v = venue.strip().lower()
         if v.startswith("http") and "openalex.org/" in v:
             raise ValueError(
                 f"{venue!r} is an OpenAlex URL but not a source (S) id; "
                 "pass an S-id, an ISSN, or a journal name")
-        return tool.search_sources(venue, max_records=max_records)
-    return tool.get_source(venue)
+        try:
+            return tool.search_sources(venue, max_records=max_records)
+        except OpenAlexKeyRequired as e:
+            return _openalex_key_result(e)
+    try:
+        return tool.get_source(venue)
+    except OpenAlexKeyRequired as e:
+        return _openalex_key_result(e)
 
 
-# ---------------------------------------------------------------- arXiv ---
 
-@mcp.tool(annotations=READ_ONLY)
+
+
+
+@mcp.tool(annotations=READ_ONLY, blank_as_absent={"query"})
 def arxiv_search(query: str | None = None, category: str | None = None,
                  date_from: str | None = None, date_to: str | None = None,
                  start: int = 0, max_results: int = 25,
@@ -304,6 +368,15 @@ def arxiv_search(query: str | None = None, category: str | None = None,
     only after journal publication. Malformed queries raise an error
     (arXiv's HTTP-200 error feed is detected, never returned as data).
     """
+
+
+
+
+
+
+
+    query = none_if_blank(query)
+    reject_blank(category=category)
     return _arxiv().search(query=query, category=category,
                            date_from=date_from, date_to=date_to,
                            start=start, max_results=max_results,
@@ -334,10 +407,10 @@ def arxiv_get_papers(arxiv_ids: list[str]) -> dict:
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

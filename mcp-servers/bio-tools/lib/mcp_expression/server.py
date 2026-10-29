@@ -17,13 +17,14 @@ from __future__ import annotations
 
 import threading
 
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import reject_blank
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 import re
@@ -31,11 +32,13 @@ import re
 from gtex_expression import GtexClient, GtexExpression
 from panglaodb_markers import PanglaoDB
 
-mcp = FastMCP("mcp-expression")
 
-# One throttled HTTP client shared by every GTEx call.
+
+mcp = GuardedFastMCP("mcp-expression")
+
+
 _gtex_client = GtexClient()
-# PanglaoDB table is downloaded (once) lazily on first marker query.
+
 _panglao: PanglaoDB | None = None
 _panglao_lock = threading.Lock()
 
@@ -70,8 +73,8 @@ def _with_unversioned_hint(result: dict, *gene_ids: str | None) -> dict:
 
 
 def _db() -> PanglaoDB:
-    # Atomic check-then-act (review 3386234819): concurrent worker-thread
-    # calls could double-construct (and double-download) the table.
+
+
     global _panglao
     with _panglao_lock:
         if _panglao is None:
@@ -79,9 +82,9 @@ def _db() -> PanglaoDB:
         return _panglao
 
 
-# --------------------------------------------------------------------------
-# GTEx tools
-# --------------------------------------------------------------------------
+
+
+
 
 @mcp.tool(annotations=READ_ONLY)
 def gtex_tissue_sites(dataset_id: str = "gtex_v8") -> dict:
@@ -128,6 +131,12 @@ def gtex_sample_info(tissue_site_detail_id: str | None = None,
     call returns tens of thousands of rows — filter, or set max_samples).
     When max_samples is set, `returned` < `total` and `truncated` is true.
     """
+
+
+
+    reject_blank(tissue_site_detail_id=tissue_site_detail_id,
+                 data_type=data_type, subject_id=subject_id,
+                 dataset_id=dataset_id)
     out = _gtex(dataset_id).sample_info(
         tissue_site_detail_id=tissue_site_detail_id, data_type=data_type,
         subject_id=subject_id, max_items=max_samples)
@@ -285,9 +294,9 @@ def gtex_calculate_eqtl(gencode_id: str, variant_id: str,
         gencode_id, variant_id, tissue_site_detail_id)
 
 
-# --------------------------------------------------------------------------
-# PanglaoDB tools
-# --------------------------------------------------------------------------
+
+
+
 
 @mcp.tool(annotations=READ_ONLY)
 def panglaodb_marker_genes(cell_type: str | None = None,
@@ -355,10 +364,10 @@ def panglaodb_cell_types_for_gene(gene_symbol: str,
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

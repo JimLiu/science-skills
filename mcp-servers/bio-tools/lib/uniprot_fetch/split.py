@@ -7,7 +7,7 @@ def fasta_accession(header: str) -> str:
     parts = header[1:].split("|")
     if len(parts) >= 3 and parts[0] in ("sp", "tr"):
         return parts[1]
-    # Fallback (non-UniProt-style headers): first whitespace-delimited token.
+
     return header[1:].split()[0]
 
 

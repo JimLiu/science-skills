@@ -19,7 +19,7 @@ from mcp_servers_common.ratelimit import retry_after_seconds
 
 BASE_URL = "https://alphafold.ebi.ac.uk/api"
 USER_AGENT = "alphafold-structures/0.1 (bio-tools fleet; python-httpx)"
-MIN_INTERVAL_S = 0.5          # <= 2 req/s
+MIN_INTERVAL_S = 0.5
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
@@ -50,7 +50,7 @@ class AlphaFoldClient:
         self.max_retries = max_retries
         self.min_interval_s = min_interval_s
         self._last_request_t = 0.0
-        # accounting
+
         self.request_count = 0
         self.bytes_downloaded = 0
         self._client = httpx.Client(
@@ -59,7 +59,7 @@ class AlphaFoldClient:
             transport=transport,
         )
 
-    # ------------------------------------------------------------------ #
+
     def close(self) -> None:
         self._client.close()
 
@@ -69,7 +69,7 @@ class AlphaFoldClient:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    # ------------------------------------------------------------------ #
+
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_t
         if elapsed < self.min_interval_s:

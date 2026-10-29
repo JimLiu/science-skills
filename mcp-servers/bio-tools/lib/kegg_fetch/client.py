@@ -19,7 +19,7 @@ import requests
 from .parse import parse_entry, split_flat
 
 DEFAULT_BASE_URL = "https://rest.kegg.jp"
-MAX_BATCH = 10  # KEGG /get hard limit (10 entries per request)
+MAX_BATCH = 10
 
 RETRYABLE_STATUS = (403, 429, 500, 502, 503, 504)
 
@@ -32,16 +32,16 @@ class KeggError(RuntimeError):
 class KeggEntry:
     """One retrieved KEGG entry."""
 
-    requested_id: str  # the id as requested (e.g. 'hsa:7157', 'hsa04110', 'C00031')
-    entry_id: str      # the ENTRY token KEGG returned (e.g. '7157', 'hsa04110', 'C00031')
-    raw: str           # raw flat-file text for this entry, terminated by '///'
-    record: dict       # structured fields (see kegg_fetch.parse.parse_entry)
+    requested_id: str
+    entry_id: str
+    raw: str
+    record: dict
 
 
 @dataclass
 class TransportStats:
     http_requests: int = 0
-    bytes_downloaded: int = 0  # decompressed response body bytes
+    bytes_downloaded: int = 0
 
 
 class KeggClient:
@@ -68,7 +68,7 @@ class KeggClient:
         self.stats = TransportStats()
         self._last_request_start = 0.0
 
-    # -- transport -----------------------------------------------------
+
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_start
         if elapsed < self.min_interval_s:
@@ -98,7 +98,7 @@ class KeggClient:
             raise KeggError(f"KEGG REST error {resp.status_code} for {url}")
         raise KeggError(f"KEGG REST request failed for {url}: {last_exc}")
 
-    # -- public API ----------------------------------------------------
+
     def find(self, database: str, query: str) -> str:
         """Raw /find/<database>/<query> response (used only for battery freezing)."""
         db = quote(str(database), safe="")

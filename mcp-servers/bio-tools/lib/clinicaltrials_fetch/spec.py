@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 from typing import Any
 
-# Enumerations taken from GET /api/v2/studies/enums (API version 2.0.5).
+
 PHASES = frozenset({"NA", "EARLY_PHASE1", "PHASE1", "PHASE2", "PHASE3", "PHASE4"})
 STATUSES = frozenset({
     "ACTIVE_NOT_RECRUITING", "COMPLETED", "ENROLLING_BY_INVITATION", "NOT_YET_RECRUITING",
@@ -72,16 +72,16 @@ class FilterSpec:
     """
     spec_id: str
     description: str = ""
-    condition: str | None = None              # -> query.cond (Essie ConditionSearch area)
-    intervention: str | None = None           # -> query.intr (Essie InterventionSearch area)
-    overall_status: tuple[str, ...] = ()      # -> filter.overallStatus
-    phase: tuple[str, ...] = ()               # -> filter.advanced AREA[Phase] (OR across values)
-    study_type: str | None = None             # -> filter.advanced AREA[StudyType]
-    enrollment: IntRange | None = None        # -> filter.advanced AREA[EnrollmentCount]RANGE
-    primary_completion_date: DateRange | None = None  # -> AREA[PrimaryCompletionDate]RANGE
-    first_posted_date: DateRange | None = None        # -> AREA[StudyFirstPostDate]RANGE
-    location_country: str | None = None       # -> AREA[LocationCountry]"..."
-    lead_sponsor_class: str | None = None     # -> AREA[LeadSponsorClass]
+    condition: str | None = None
+    intervention: str | None = None
+    overall_status: tuple[str, ...] = ()
+    phase: tuple[str, ...] = ()
+    study_type: str | None = None
+    enrollment: IntRange | None = None
+    primary_completion_date: DateRange | None = None
+    first_posted_date: DateRange | None = None
+    location_country: str | None = None
+    lead_sponsor_class: str | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "FilterSpec":

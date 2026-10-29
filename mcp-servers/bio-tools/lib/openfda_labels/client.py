@@ -16,7 +16,7 @@ import httpx
 
 BASE_URL = "https://api.fda.gov/drug/label.json"
 
-# openFDA hard caps (documented at open.fda.gov/apis/paging/)
+
 MAX_PAGE_SIZE = 1000
 MAX_SKIP = 25000
 
@@ -50,11 +50,11 @@ class OpenFDAClient:
         self.base_url = base_url
         self._client = httpx.Client(timeout=timeout)
         self._last_request_at = 0.0
-        # benchmark counters
-        self.n_requests = 0
-        self.bytes_downloaded = 0  # wire bytes (gzip-compressed)
 
-    # ------------------------------------------------------------------ http
+        self.n_requests = 0
+        self.bytes_downloaded = 0
+
+
     def _throttle(self) -> None:
         wait = self.min_interval - (time.monotonic() - self._last_request_at)
         if wait > 0:
@@ -79,12 +79,12 @@ class OpenFDAClient:
             except httpx.TransportError as exc:
                 self._last_request_at = time.monotonic()
                 last_exc = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(min(2 ** attempt, 30))
                 continue
             if resp.status_code in RETRYABLE_STATUS:
                 last_exc = OpenFDAError(f"HTTP {resp.status_code}: {resp.text[:200]}")
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(min(2 ** attempt, 30))
                 continue
             body = resp.json()
@@ -95,7 +95,7 @@ class OpenFDAClient:
             return body
         raise OpenFDAError(f"request failed after {self.max_retries + 1} attempts: {last_exc}")
 
-    # ------------------------------------------------------------------- api
+
     def search_total(self, search: str) -> int:
         """The API's own matched-document count (``meta.results.total``)."""
         body = self._request({"search": search, "limit": 1})

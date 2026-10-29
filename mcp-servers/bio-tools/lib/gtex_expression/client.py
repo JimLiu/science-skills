@@ -32,7 +32,7 @@ class NotFound(GtexApiError):
 class TransportStats:
     requests: int = 0
     bytes_downloaded: int = 0
-    raw_bodies: list = field(default_factory=list)  # populated only when capture_raw=True
+    raw_bodies: list = field(default_factory=list)
 
 
 class GtexClient:
@@ -53,13 +53,13 @@ class GtexClient:
         self.stats = TransportStats()
         self._last_request_t = 0.0
 
-    # -- internals ---------------------------------------------------------
+
     def _throttle(self) -> None:
         dt = time.monotonic() - self._last_request_t
         if dt < self.min_interval_s:
             time.sleep(self.min_interval_s - dt)
 
-    # -- public ------------------------------------------------------------
+
     def get_json(self, path: str, params: dict | None = None):
         """GET ``path`` (relative to base_url) and parse JSON.
 
@@ -72,10 +72,10 @@ class GtexClient:
             self._throttle()
             try:
                 resp = self.session.get(url, params=params, timeout=self.timeout_s)
-            except requests.RequestException as exc:      # connection / timeout
+            except requests.RequestException as exc:
                 self._last_request_t = time.monotonic()
                 last_err = exc
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2 ** attempt, 30))
                 continue
             self._last_request_t = time.monotonic()
@@ -87,7 +87,7 @@ class GtexClient:
                 last_err = GtexApiError(f"HTTP {resp.status_code} for {url}")
                 retry_after = resp.headers.get("Retry-After", "")
                 delay = retry_after_seconds(retry_after, min(2 ** attempt, 30))
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(delay)
                 continue
             if resp.status_code != 200:
@@ -96,7 +96,7 @@ class GtexClient:
                 payload = resp.json()
             except json.JSONDecodeError as exc:
                 last_err = exc
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2 ** attempt, 30))
                 continue
             if self.capture_raw:

@@ -184,9 +184,9 @@ def normalize_detail_record(raw: dict) -> dict:
     }
 
 
-# Fields expected to agree between the search index and the detail endpoint for
-# the same accession. Excluded on purpose: source, affiliations (detail often
-# null), keywords/project_tags/softwares (indexing differences), updated dates.
+
+
+
 COMPARABLE_FIELDS = [
     "accession",
     "title",

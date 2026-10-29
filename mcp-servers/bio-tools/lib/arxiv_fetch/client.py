@@ -16,11 +16,10 @@ import requests
 from mcp_servers_common.ua import product_ua
 
 BASE_URL = "https://export.arxiv.org/api/query"
-# arXiv ToU requires a descriptive identifying UA; the stdio server runs on
-# the user's box, so identify the user's install (legal Y12). arXiv (Cornell)
-# is NOT a recipient named in the contact-email disclosure, so the UA carries
-# install/version only — no mailto (review 3464807793).
-USER_AGENT = product_ua("arxiv-fetch", include_email=False)
+
+
+
+USER_AGENT = product_ua(include_email=False)
 
 
 class ArxivApiError(RuntimeError):
@@ -66,10 +65,10 @@ class ArxivClient:
             if resp.status_code != 200:
                 raise ArxivApiError(
                     f"HTTP {resp.status_code}: {resp.text[:300]}")
-            # arXiv feeds never carry a DTD; refusing one up front removes
-            # every stdlib-etree XML attack vector (XXE/billion-laughs).
-            # FULL-body scan: a prefix window is walkable with comment
-            # padding before <!DOCTYPE (QA cert 4669472813 live bypass).
+
+
+
+
             if "<!DOCTYPE" in resp.text:
                 raise ArxivApiError("unexpected DTD in arXiv response")
             try:

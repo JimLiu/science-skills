@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import json
 
-# Keys injected by a client rather than returned by the ChEMBL REST payload.
-# As captured (chembl_webresource_client 0.10.9 vs direct REST, 2026-05-30) the
-# legacy client returns the API's JSON objects verbatim, so this set is empty.
-# It is kept as the single documented hook should a future client add bookkeeping keys.
+
+
+
+
 CLIENT_ONLY_KEYS: frozenset[str] = frozenset()
 
 SORT_KEYS = {

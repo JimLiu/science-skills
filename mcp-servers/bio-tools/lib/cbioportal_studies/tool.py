@@ -46,7 +46,7 @@ class CBioPortalStudies:
     def __init__(self, client: CBioPortalClient | None = None):
         self.client = client or CBioPortalClient()
 
-    # ------------------------------------------------------------- studies
+
 
     def list_studies(self, keyword: str | None = None,
                      cancer_type_id: str | None = None,
@@ -103,7 +103,7 @@ class CBioPortalStudies:
         rec["molecular_profiles"] = shaped_profiles
         return rec
 
-    # ----------------------------------------------------------- internals
+
 
     def _gene(self, gene_symbol: str) -> dict[str, Any]:
         """Resolve a HUGO symbol (or Entrez id string) via /genes/{id}."""
@@ -151,7 +151,7 @@ class CBioPortalStudies:
             {"projection": "SUMMARY", "pageSize": PAGE_ALL, "pageNumber": 0})
         return rows or []
 
-    # ---------------------------------------------------------- mutations
+
 
     def mutations_in_gene(self, gene_symbol: str, study_id: str,
                           max_records: int = 100) -> dict[str, Any]:
@@ -249,7 +249,7 @@ class CBioPortalStudies:
             "no_mutation_data": no_mutation_data,
         }
 
-    # ---------------------------------------------------------------- CNA
+
 
     def cna_in_gene(self, gene_symbol: str, study_id: str,
                     event_type: str = "HOMDEL_AND_AMP",
@@ -298,7 +298,7 @@ class CBioPortalStudies:
             "events": shaped[:max_records],
         }
 
-    # ----------------------------------------------------------- clinical
+
 
     def clinical_attributes(self, study_id: str,
                             max_records: int = 200) -> dict[str, Any]:

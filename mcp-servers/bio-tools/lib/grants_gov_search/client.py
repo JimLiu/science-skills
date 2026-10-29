@@ -36,7 +36,7 @@ class IncompleteRetrievalError(GrantsGovError):
 class SearchResult:
     records: list[dict]
     hit_count: int
-    facets: dict            # facet blocks from the first page response
+    facets: dict
     requests_made: int
     bytes_downloaded: int
 
@@ -59,7 +59,7 @@ class GrantsGovClient:
         self.total_requests = 0
         self.total_bytes = 0
 
-    # -- transport -------------------------------------------------------
+
     def _post(self, payload: dict) -> tuple[dict, int]:
         """One throttled POST; returns (data, n_bytes). Retries 5xx/connection
         errors with exponential backoff; non-zero errorcode raises."""
@@ -88,12 +88,12 @@ class GrantsGovClient:
             except (requests.ConnectionError, requests.Timeout, GrantsGovError) as exc:
                 last_exc = exc
                 if isinstance(exc, GrantsGovError) and not str(exc).startswith("HTTP 5"):
-                    raise           # client-side errors are not retryable
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                    raise
+                if attempt < self.max_retries - 1:
                     time.sleep(2 ** attempt)
         raise GrantsGovError(f"gave up after {self.max_retries} attempts: {last_exc}")
 
-    # -- public surface ---------------------------------------------------
+
     def search(self, spec: GrantsSearchSpec) -> SearchResult:
         """Full retrieval: walk startRecordNum until every hit is fetched.
 
@@ -144,7 +144,7 @@ class GrantsGovClient:
         spec = GrantsSearchSpec(opp_num=opp_num, opp_statuses=opp_statuses)
         return self.search(spec).records
 
-    # -- facet readers (independent count formulations) -------------------
+
     @staticmethod
     def status_facet_count(facets: dict, statuses: str) -> int:
         """Sum of oppStatusOptions counts over a pipe-delimited status set.
@@ -174,7 +174,7 @@ class GrantsGovClient:
                 return opt.get("count")
         return None
 
-    # -- context manager ---------------------------------------------------
+
     def __enter__(self):
         return self
 

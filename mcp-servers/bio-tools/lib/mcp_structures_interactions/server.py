@@ -22,16 +22,17 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any, Literal
 
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import blank, reject_blank
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
-# Fleet retrieval functions (monkeypatched in offline tests).
+
 from emdb_meta import (
     fetch_section_records,
     fetch_validation_records,
@@ -54,10 +55,12 @@ from pdb_structures import (
 )
 from alphafold_structures import fetch_coverage_records, fetch_prediction_record
 
-mcp = FastMCP("mcp-structures-interactions")
 
 
-# One client per backend per process; fleet clients pace and retry internally.
+mcp = GuardedFastMCP("mcp-structures-interactions")
+
+
+
 @lru_cache(maxsize=1)
 def _emdb_client():
     from emdb_meta import EMDBClient
@@ -95,9 +98,9 @@ def _cap(records: list, max_returned: int | None) -> tuple[list, bool]:
     return records, False
 
 
-# --------------------------------------------------------------------------- #
-# EMDB (emdb-meta)
-# --------------------------------------------------------------------------- #
+
+
+
 @mcp.tool(annotations=READ_ONLY)
 def emdb_get_entries(emdb_ids: list[str]) -> dict[str, Any]:
     """Fetch structured metadata records for EMDB cryo-EM entries.
@@ -133,6 +136,10 @@ def emdb_search_entries(query: str, max_rows: int = 1000) -> dict[str, Any]:
     (emdb_id, title, resolution, structure_determination_method, current_status,
     release dates, fitted PDBs) sorted by EMD accession.
     """
+
+
+    if blank(query):
+        raise ValueError("query must be non-empty")
     result = run_search_spec(_emdb_client(), query, max_rows=max_rows)
     result["max_rows"] = max_rows
     return result
@@ -178,9 +185,9 @@ def emdb_get_validation(emdb_ids: list[str]) -> dict[str, Any]:
     return {"n_requested": len(emdb_ids), "records": records}
 
 
-# --------------------------------------------------------------------------- #
-# Complex Portal (complexportal-fetch)
-# --------------------------------------------------------------------------- #
+
+
+
 @mcp.tool(annotations=READ_ONLY)
 def complexportal_get_complexes(complex_acs: list[str]) -> dict[str, Any]:
     """Fetch curated Complex Portal records by CPX accession.
@@ -220,14 +227,20 @@ def complexportal_search_by_participant(
     description) sorted by complex accession; fetch full detail with
     complexportal_get_complexes.
     """
+
+
+
+
+    if blank(accession):
+        raise ValueError("accession must be non-empty")
     return search_by_participant(
         accession, client=_cpx_client(), participants_only=participants_only
     )
 
 
-# --------------------------------------------------------------------------- #
-# IntAct (intact-interactions)
-# --------------------------------------------------------------------------- #
+
+
+
 @mcp.tool(annotations=READ_ONLY)
 def intact_fetch_interactions(
     query: str,
@@ -256,6 +269,12 @@ def intact_fetch_interactions(
     total). Large queries (e.g. CFTR ~10k interactions) take minutes at the
     polite 2 req/s pace — narrow with min_mi_score or species when possible.
     """
+
+
+
+
+    if blank(query):
+        raise ValueError("query must be non-empty")
     result = fetch_interactions(
         query,
         min_mi_score=min_mi_score,
@@ -282,6 +301,8 @@ def intact_get_interactor(query: str) -> dict[str, Any]:
     type, and the interaction_count seen by IntAct (useful for sizing an
     intact_fetch_interactions sweep).
     """
+    if blank(query):
+        raise ValueError("query must be non-empty")
     return get_interactor(query, client=_intact_client())
 
 
@@ -338,9 +359,9 @@ def intact_build_network(
     )
 
 
-# --------------------------------------------------------------------------- #
-# RCSB PDB (pdb-structures)
-# --------------------------------------------------------------------------- #
+
+
+
 @mcp.tool(annotations=READ_ONLY)
 def pdb_search_structures(
     text: str | None = None,
@@ -373,6 +394,15 @@ def pdb_search_structures(
     1..1000, caps retrieval), and records [{pdb_id, score}] in relevance
     order. Identifiers only — chain to pdb_get_structures for metadata.
     """
+
+
+
+
+
+    reject_blank(text=text, organism=organism,
+                 uniprot_accession=uniprot_accession,
+                 experimental_method=experimental_method,
+                 ligand_comp_id=ligand_comp_id)
     result = search_structures(
         _pdb_client(),
         text=text,
@@ -389,7 +419,11 @@ def pdb_search_structures(
     return result
 
 
-@mcp.tool(annotations=READ_ONLY)
+
+
+
+
+@mcp.tool(annotations=READ_ONLY, allow_blank={"pdb_ids"})
 def pdb_get_structures(pdb_ids: list[str]) -> dict[str, Any]:
     """Fetch entry-level summaries for PDB entries (batch, max 25 ids).
 
@@ -405,10 +439,10 @@ def pdb_get_structures(pdb_ids: list[str]) -> dict[str, Any]:
     "not_found"} — never silently dropped. Metadata only; coordinate files
     are never downloaded.
     """
-    # Blank-strip + case-insensitive dedupe BEFORE the cap (finding
-    # 3407097659), mirroring alphafold fetch_coverage_records: a batch whose
-    # raw count exceeds the cap but whose unique count is within it
-    # (duplicate/overlapping id lists) must not be spuriously rejected.
+
+
+
+
     cleaned: list[str] = []
     seen: set[str] = set()
     n_blank = 0
@@ -498,9 +532,9 @@ def pdb_get_ligands(pdb_id: str, max_ligands: int = 25) -> dict[str, Any]:
     return fetch_ligand_records(_pdb_client(), pdb_id, max_ligands=max_ligands)
 
 
-# --------------------------------------------------------------------------- #
-# AlphaFold DB (alphafold-structures)
-# --------------------------------------------------------------------------- #
+
+
+
 @mcp.tool(annotations=READ_ONLY)
 def alphafold_get_prediction(
     uniprot_accession: str,
@@ -528,7 +562,10 @@ def alphafold_get_prediction(
         _afdb_client(), uniprot_accession, include_sequence=include_sequence)
 
 
-@mcp.tool(annotations=READ_ONLY)
+
+
+
+@mcp.tool(annotations=READ_ONLY, allow_blank={"uniprot_accessions"})
 def alphafold_check_coverage(uniprot_accessions: list[str]) -> dict[str, Any]:
     """Batch AlphaFold DB coverage check (max 40 unique UniProt accessions).
 
@@ -548,10 +585,10 @@ def alphafold_check_coverage(uniprot_accessions: list[str]) -> dict[str, Any]:
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

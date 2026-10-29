@@ -32,14 +32,14 @@ def split_flat(text: str) -> List[str]:
     current: List[str] = []
     for line in text.splitlines():
         if not current and not line.strip():
-            # Blank line between records (batch separator) — skip.
+
             continue
         current.append(line)
         if line.strip() == TERMINATOR:
             chunks.append("\n".join(current) + "\n")
             current = []
     if any(line.strip() for line in current):
-        # Defensive: an entry without a terminator (KEGG always terminates entries).
+
         chunks.append("\n".join(current) + "\n")
     return chunks
 
@@ -80,8 +80,8 @@ def parse_entry(entry_text: str) -> dict:
     """Parse one KEGG flat-file record into a compact structured dict."""
     fields = parse_fields(entry_text)
 
-    # ENTRY value examples: '7157              CDS       T01001' (gene; trailing
-    # token is the KEGG genome id), 'hsa04110          Pathway', 'C00031   Compound'.
+
+
     entry_tokens = fields.get("ENTRY", [""])[0].split()
     entry_id = entry_tokens[0] if entry_tokens else ""
     entry_type = entry_tokens[1] if len(entry_tokens) > 1 else ""
@@ -90,8 +90,8 @@ def parse_entry(entry_text: str) -> dict:
     for line in fields.get("NAME", []):
         for piece in line.split(";"):
             piece = piece.strip()
-            # Gene NAME lines carry a source tag, e.g. '(RefSeq) tumor protein p53';
-            # strip it in the structured record (the raw flat-file is left untouched).
+
+
             if piece.startswith("(RefSeq)"):
                 piece = piece[len("(RefSeq)"):].strip()
             if piece:
@@ -108,7 +108,7 @@ def parse_entry(entry_text: str) -> dict:
     definition = joined("DEFINITION") or joined("DESCRIPTION")
 
     return {
-        "entry": entry_id,  # overwritten with the requested id by KeggClient.get_entries
+        "entry": entry_id,
         "entry_id": entry_id,
         "entry_type": entry_type,
         "name": names,

@@ -54,14 +54,14 @@ def panel_task(outline, letter, fig_label="Figure", rules_ref="(load `figure-sty
     rowmates = [q["letter"] for q in outline["panels"]
                 if q["row"]==p["row"] and q["letter"]!=letter and q.get("rowspan",1)==p.get("rowspan",1)]
     share_line = (f"- **Row-mates: {','.join(rowmates)}** — match y-limits if same metric; series identity "
-                  f"labelled ONCE on the row (rightmost panel).") if rowmates else ""
+                  f"labeled ONCE on the row (rightmost panel).") if rowmates else ""
     bud = p.get("label_budget", 4)
     return f"""Produce panel **{letter}** of {fig_label}. You are one of {len(outline['panels'])} parallel panel-makers; the composer tiles results on a {outline['ncol']}-column grid.
 
 ## Figure narrative (the one sentence this whole figure makes true)
 > {outline['claim']}
 
-Neighbours: {neighbours}
+Neighbors: {neighbours}
 
 ## Your panel
 - **role:** {p['role']} · **chart family:** {p['chart_family']}
@@ -84,7 +84,7 @@ Neighbours: {neighbours}
 
 ## §3.5 Fill the box
 - Box is **{w}×{h} px (aspect {w/h:.2f})**. Data envelope must occupy ≥75% of it.
-  Set `fig.subplots_adjust(...)` so the axes fill the box minus labels; do not centre
+  Set `fig.subplots_adjust(...)` so the axes fill the box minus labels; do not center
   a small plot in a large canvas.
 
 ## Hard rendering constraints
@@ -235,12 +235,14 @@ def derive_outline(figure_png_path, claim=None, data_hints=None, model=None):
     r = fc_sdk().llm(prompt, images=[figure_png_path],
                    tools=[{"name":"outline","input_schema":sch}],
                    tool_choice={"type":"tool","name":"outline"},
-                   model=model or "claude-sonnet-5", max_tokens=4000)
-    out = (r.get("tool_use") or [{}])[0].get("input") or {}
+
+
+                   model=model or fc_sdk().reasoning_model(), max_tokens=4000)
+    out = (r.get("tool_use") or {}).get("input") or {}
     for p in out.get("panels") or []:
         p["data_vid"] = None
     return out
 
-# Convention: save composites as ONE artifact `{fig_key}.png`
-# with version_of, and write `{fig_key}_review_r{n}.json` per round — never re-version
-# a file literally named `_r0` across rounds.
+
+
+

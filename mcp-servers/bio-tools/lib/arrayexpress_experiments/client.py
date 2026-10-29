@@ -40,7 +40,7 @@ class BioStudiesClient:
         self.session.headers.setdefault("User-Agent", USER_AGENT)
         self.session.headers.setdefault("Accept", "application/json")
         self._last_request_t = 0.0
-        # instrumentation
+
         self.request_count = 0
         self.bytes_downloaded = 0
 
@@ -68,7 +68,7 @@ class BioStudiesClient:
                     retry_after = resp.headers.get("Retry-After")
                     delay = retry_after_seconds(retry_after, 2.0 ** attempt)
                     last_exc = BioStudiesError(f"HTTP {resp.status_code} for {url}")
-                    if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                    if attempt < self.max_retries:
                         time.sleep(delay)
                     continue
                 if resp.status_code == 404:
@@ -76,11 +76,11 @@ class BioStudiesClient:
                 resp.raise_for_status()
                 try:
                     return resp.json()
-                except json.JSONDecodeError as exc:  # pragma: no cover - defensive
+                except json.JSONDecodeError as exc:
                     raise BioStudiesError(f"Non-JSON response from {url}") from exc
             except (requests.ConnectionError, requests.Timeout) as exc:
                 last_exc = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(2.0 ** attempt)
                 continue
         raise BioStudiesError(f"Giving up on {url} after {self.max_retries + 1} attempts: {last_exc}")
@@ -100,7 +100,7 @@ class BioStudiesClient:
                     retry_after = resp.headers.get("Retry-After")
                     delay = retry_after_seconds(retry_after, 2.0 ** attempt)
                     last_exc = BioStudiesError(f"HTTP {resp.status_code} for {url}")
-                    if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                    if attempt < self.max_retries:
                         time.sleep(delay)
                     continue
                 if resp.status_code == 404:
@@ -109,7 +109,7 @@ class BioStudiesClient:
                 return resp.text
             except (requests.ConnectionError, requests.Timeout) as exc:
                 last_exc = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(2.0 ** attempt)
                 continue
         raise BioStudiesError(f"Giving up on {url} after {self.max_retries + 1} attempts: {last_exc}")

@@ -40,39 +40,39 @@ from .client import (
     flatten_result,
 )
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 mcp = FastMCP("mcp-zinc")
 
 DEFAULT_MAX_RESULTS = 50
 MAX_RESULTS_CAP = 500
-MAX_IDS_PER_CALL = 100      # batch lookup bound (one submit, many ids)
-MAX_IDS_3D = 50             # 3D prep is per-compound work; keep batches small
+MAX_IDS_PER_CALL = 100
+MAX_IDS_3D = 50
 
-# Known CartBlanche22 random-sample subsets (passed through verbatim so new
-# upstream subsets keep working; these are the documented ones).
+
+
 KNOWN_SUBSETS = ("fragment", "lead-like", "drug-like", "lugs")
 
 _TRANCHE_RE = re.compile(r"^H(\d{2})([PM])(\d{3})$")
 _ZINC_ID_RE = re.compile(r"^ZINC[a-zA-Z]?\d+$", re.IGNORECASE)
-# Delimiter / control characters that, if accepted inside a single list
-# entry, would let one entry expand into many ids in the comma-joined form
-# field and defeat MAX_IDS_PER_CALL (review 3415652672).
+
+
+
 _ID_DELIM_RE = re.compile(r"[,\s]")
 
 
-# One client per process; per-domain serialization in the aggregate (and
-# the standalone single-loop server) keeps the shared Session single-flight.
+
+
 @lru_cache(maxsize=1)
 def _client() -> ZincClient:
     return ZincClient()
 
 
 def _max_results(n: int) -> int:
-    # max(.., min(..)) clamp, not `or` — limit=0 must clamp to 1, never
-    # silently coerce to the default (same class as chembl review 3377922603).
+
+
     return max(1, min(MAX_RESULTS_CAP, int(n)))
 
 
@@ -81,7 +81,7 @@ def _timeout(seconds: float) -> float:
 
 
 def _normalize_zinc_id(s: str) -> str:
-    """Canonicalize a ZINC id for result-map lookup (review 4711232176#3).
+    """Canonicalize a ZINC id for result-map lookup.
 
     Upstream returns zero-padded ``ZINC000000000012``; ``_ZINC_ID_RE`` accepts
     ``ZINC12`` (and lowercase), so without normalization a short-form input
@@ -101,7 +101,7 @@ def parse_tranche(tranche_name: str | None) -> tuple[dict, str] | None:
     The tranche encodes nothing else (no MW, no HBD).
 
     Returns ``(properties, validated_code)`` — fullmatch + the validated
-    capture (review 3415810974) so callers interpolate ``m.group(0)`` into
+    capture so callers interpolate ``m.group(0)`` into
     paths, never the raw upstream string. Non-string input returns None:
     the ``smiles.txt`` endpoint sends ``tranche`` as a dict, not a code
     string (the 06-25 probe crash — ``_tranche_properties`` handles that
@@ -170,7 +170,7 @@ def _page(records: list[dict], counts: dict[str, int], cap: int,
 
 def _require_ids(ids: list[str], bound: int, what: str,
                  pattern: re.Pattern[str] | None = None) -> list[str]:
-    """Normalize and bound an id list (review 3415652672).
+    """Normalize and bound an id list.
 
     Entries are joined with commas into the upstream form field, so a single
     entry containing a delimiter would let one list element submit many ids
@@ -198,7 +198,7 @@ def _require_ids(ids: list[str], bound: int, what: str,
     return cleaned
 
 
-# ── tools ────────────────────────────────────────────────────────────────
+
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -378,10 +378,10 @@ def zinc_get_3d(zinc_ids: list[str],
          "output_fields": DEFAULT_OUTPUT_FIELDS},
         timeout_s=_timeout(timeout_s))
     records, _counts = flatten_result(result)
-    # Key the result map by NORMALIZED id (review 4711232176#3): upstream
-    # returns zero-padded ids, so a short-form input like "ZINC12" would
-    # otherwise miss its own result and report an authoritative-looking
-    # found:False with no error.
+
+
+
+
     by_id: dict[str, dict] = {}
     for rec in records:
         rid = rec.get("zinc_id")
@@ -431,10 +431,10 @@ def zinc_get_3d(zinc_ids: list[str],
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

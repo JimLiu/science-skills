@@ -17,19 +17,22 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import blank, reject_blank
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
-mcp = FastMCP("mcp-clinical-genomics")
 
 
-# One backend instance per process; fleet clients pace/retry internally.
+mcp = GuardedFastMCP("mcp-clinical-genomics")
+
+
+
 @lru_cache(maxsize=1)
 def _clingen():
     from clingen_curations import ClinGenCurations
@@ -48,7 +51,7 @@ def _open_targets():
     return OpenTargetsClient()
 
 
-# ---------------------------------------------------------------- ClinGen --
+
 
 @mcp.tool(annotations=READ_ONLY)
 def clingen_gene_validity(gene: str | None = None) -> dict:
@@ -64,6 +67,9 @@ def clingen_gene_validity(gene: str | None = None) -> dict:
     Returns total, records (gene_symbol, disease label + MONDO id, mode of
     inheritance, classification, SOP, expert panel, report date), source.
     """
+
+
+    reject_blank(gene=gene)
     return _clingen().gene_validity(gene=gene)
 
 
@@ -84,6 +90,10 @@ def clingen_dosage_sensitivity(gene: str | None = None,
     haploinsufficiency + triplosensitivity assertions with numeric scores and
     labels, genomic location, report date), source.
     """
+
+
+
+    reject_blank(gene=gene)
     return _clingen().dosage_sensitivity(gene=gene, include_regions=include_regions)
 
 
@@ -106,6 +116,8 @@ def clingen_actionability(gene: str | None = None, context: str = "both") -> dic
     disease, outcome, intervention, component scores, total_score, report
     stage/date), plus source.
     """
+
+    reject_blank(gene=gene)
     return _clingen().actionability(gene=gene, context=context)
 
 
@@ -129,10 +141,10 @@ def clingen_variant_classifications(gene: str | None = None,
     return _clingen().variant_classifications(gene=gene, caid=caid, hgvs=hgvs)
 
 
-# ------------------------------------------------------------------ CIViC --
-# All CIViC search tools walk Relay cursor pagination to COMPLETION and
-# verify retrieved row count == the connection's totalCount (the legacy
-# methods silently stopped at the server's 100-node first page).
+
+
+
+
 
 @mcp.tool(annotations=READ_ONLY)
 def civic_search_genes(entrez_symbol: str) -> dict:
@@ -167,6 +179,10 @@ def civic_get_variant(variant_id: int) -> dict:
 def civic_search_variants(name: str, gene_id: int | None = None) -> dict:
     """Search CIViC variants by name substring (e.g. "V600"), optionally
     scoped to a CIViC gene id. Fully paginated; sorted by variant id."""
+
+
+    if blank(name):
+        raise ValueError("name must be non-empty")
     return _civic().search_variants(name, gene_id)
 
 
@@ -211,6 +227,9 @@ def civic_search_evidence(disease_name: str | None = None,
     Warning: with no filters this walks the ENTIRE evidence corpus (10k+
     items, ~100 paged requests) — provide at least one filter.
     """
+
+
+    reject_blank(dict(locals()))
     filters = {k: v for k, v in locals().items() if v is not None}
     return _civic().search_evidence(**filters)
 
@@ -249,6 +268,8 @@ def civic_search_assertions(disease_name: str | None = None,
     TIER_I_LEVEL_A; status ACCEPTED|SUBMITTED|REJECTED|ALL. Name/summary
     filters are substrings; id filters exact. No filters = full corpus walk.
     """
+
+    reject_blank(dict(locals()))
     filters = {k: v for k, v in locals().items() if v is not None}
     return _civic().search_assertions(**filters)
 
@@ -265,6 +286,8 @@ def civic_get_molecular_profile(mp_id: int) -> dict:
 def civic_search_molecular_profiles(name: str) -> dict:
     """Search CIViC molecular profiles by name substring (e.g. "BRAF V600E").
     Fully paginated; sorted by id."""
+    if blank(name):
+        raise ValueError("name must be non-empty")
     return _civic().search_molecular_profiles(name)
 
 
@@ -272,6 +295,8 @@ def civic_search_molecular_profiles(name: str) -> dict:
 def civic_search_diseases(name: str) -> dict:
     """Search CIViC disease records by name substring (e.g. "melanoma").
     Returns DOIDs + display names; fully paginated; sorted by id."""
+    if blank(name):
+        raise ValueError("name must be non-empty")
     return _civic().search_diseases(name)
 
 
@@ -279,10 +304,12 @@ def civic_search_diseases(name: str) -> dict:
 def civic_search_therapies(name: str) -> dict:
     """Search CIViC therapy records by name substring (e.g. "vemurafenib").
     Returns NCIt ids + names; fully paginated; sorted by id."""
+    if blank(name):
+        raise ValueError("name must be non-empty")
     return _civic().search_therapies(name)
 
 
-# ----------------------------------------------------------- Open Targets --
+
 
 @mcp.tool(annotations=READ_ONLY)
 def open_targets_graphql(query: str,
@@ -424,10 +451,10 @@ def open_targets_drug(chembl_id: str) -> dict:
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

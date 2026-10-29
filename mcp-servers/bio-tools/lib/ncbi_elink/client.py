@@ -12,14 +12,14 @@ from mcp_servers_common.ua import contact_email, product_ua
 
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 TOOL = "ncbi-elink"
-# NCBI asks clients to identify themselves (tool + email) so an operator can
-# be warned before an IP block. Precedence (legal Y12): NCBI_EMAIL >
-# user-consented OPERON_CONTACT_EMAIL > omit (E-utilities accept omitting
-# email=; never send an empty string).
-EMAIL = os.environ.get("NCBI_EMAIL") or contact_email()
-USER_AGENT = product_ua(TOOL)
 
-DEFAULT_MIN_INTERVAL_S = 0.5   # <= 2 requests/second on the shared NCBI host
+
+
+
+EMAIL = os.environ.get("NCBI_EMAIL") or contact_email()
+USER_AGENT = product_ua()
+
+DEFAULT_MIN_INTERVAL_S = 0.5
 DEFAULT_TIMEOUT_S = 60.0
 DEFAULT_MAX_RETRIES = 4
 RETRY_STATUS = {429, 500, 502, 503, 504}
@@ -55,15 +55,15 @@ class EUtilsClient:
         self.timeout_s = timeout_s
         self.max_retries = max_retries
         self.session = session or requests.Session()
-        # requests.Session() pre-populates User-Agent, so setdefault was a
-        # no-op (bughunter Y12-3) — assign it.
+
+
         self.session.headers["User-Agent"] = USER_AGENT
         self.stats = RequestStats()
 
     def _throttle(self) -> None:
-        # Process-wide per-host pacing shared by every NCBI client in the
-        # aggregate (mcp_servers_common.ratelimit) — a local interval check
-        # multiplies across the five NCBI transports in one process.
+
+
+
         pace(EUTILS_BASE, self.min_interval_s)
 
     def get(self, endpoint: str, params: dict) -> requests.Response:
@@ -85,9 +85,9 @@ class EUtilsClient:
                 resp = self.session.get(url, params=merged, timeout=self.timeout_s)
             except (requests.ConnectionError, requests.Timeout,
                     requests.exceptions.ChunkedEncodingError) as exc:
-                # ChunkedEncodingError covers truncated chunked transfers
-                # ("Response ended prematurely"), which NCBI emits sporadically
-                # on large elink payloads; treat like any transient network fault.
+
+
+
                 last_exc = exc
                 if attempt < self.max_retries:
                     time.sleep(BACKOFF_BASE_S * (2 ** attempt))

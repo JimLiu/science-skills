@@ -21,20 +21,23 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import blank, reject_blank
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
-mcp = FastMCP("mcp-cancer-models")
 
 
-# One fleet tool per process; the fleet client paces >= 0.5 s between
-# requests and walks JSON:API pagination completely.
+mcp = GuardedFastMCP("mcp-cancer-models")
+
+
+
+
 @lru_cache(maxsize=1)
 def _depmap():
     from depmap_models import DepMapModels
@@ -60,6 +63,9 @@ def list_models(tissue: str | None = None,
     ``{model_id (SIDM...), names, model_type, growth_properties,
     crispr_ko_available, ...availability flags}``, sorted by model_id.
     """
+
+
+    reject_blank(tissue=tissue, cancer_type=cancer_type)
     return _depmap().list_models(tissue=tissue, cancer_type=cancer_type)
 
 
@@ -91,6 +97,10 @@ def search_models(query: str) -> dict:
     Returns ``{query, count, models}`` with the same lean rows as
     ``list_models``, sorted by model_id.
     """
+
+
+    if blank(query):
+        raise ValueError("query must be non-empty")
     return _depmap().search_models(query)
 
 
@@ -135,11 +145,15 @@ def search_genes(query: str, exact: bool = False) -> dict:
     cancer_driver, tumour_suppressor, in_yusa_lib}``, sorted by gene_id.
     ``count`` is verified against the API total.
     """
+
+
+    if blank(query):
+        raise ValueError("query must be non-empty")
     return _depmap().search_genes(query, exact=exact)
 
 
-# cBioPortal fleet tool, same lifecycle (client paces >= 0.5 s between
-# requests; listings are count-verified or explicitly truncated+totalled).
+
+
 @lru_cache(maxsize=1)
 def _cbioportal():
     from cbioportal_studies import CBioPortalStudies
@@ -181,6 +195,9 @@ def cbioportal_list_studies(keyword: str | None = None,
     is deliberately omitted — use ``sequenced_sample_count`` or
     ``cbioportal_get_study``'s verified ``sample_count``.
     """
+
+
+    reject_blank(keyword=keyword, cancer_type_id=cancer_type_id)
     return _cbioportal().list_studies(keyword=keyword,
                                       cancer_type_id=cancer_type_id,
                                       max_records=max_records)
@@ -338,10 +355,10 @@ def cbioportal_clinical_attributes(study_id: str,
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

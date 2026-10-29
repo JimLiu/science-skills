@@ -1,6 +1,7 @@
 """Batched UniProtKB retrieval via the REST search endpoint."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -17,6 +18,39 @@ _SPLITTERS: dict[str, Callable[[str], dict[str, str]]] = {
 }
 
 
+
+
+
+
+
+
+
+
+
+
+ACCESSION_RE = re.compile(
+    r"(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})"
+    r"(?:-[0-9]+)?",
+    re.IGNORECASE | re.ASCII,
+)
+
+
+def _checked(accessions: Iterable[str]) -> list[str]:
+    """Return ``accessions`` as a list, raising ValueError on any value that is
+    not a well-formed UniProtKB accession (see ACCESSION_RE above)."""
+    accs = list(accessions)
+    bad = [a for a in accs if not (isinstance(a, str) and ACCESSION_RE.fullmatch(a))]
+    if bad:
+        shown = ", ".join(repr(b) for b in bad[:5])
+        more = f" (+{len(bad) - 5} more)" if len(bad) > 5 else ""
+        raise ValueError(
+            f"not valid UniProtKB accessions: {shown}{more} — accession values "
+            "are interpolated into a UniProt search query, so only the "
+            "documented accession format is accepted (e.g. 'P04637', "
+            "'A0A024R161', isoform 'P04637-2')")
+    return accs
+
+
 class UniProtClient:
     """Batched UniProtKB client.
 
@@ -25,6 +59,9 @@ class UniProtClient:
     cursor pagination via the ``Link`` header, gzip transfer encoding), and the
     multi-record response is split back into per-accession records returned in the
     original input order. Accessions that return no record are reported explicitly.
+
+    Accession values are validated against the documented UniProtKB format before
+    query construction (see ACCESSION_RE); anything else raises ValueError.
     """
 
     def __init__(
@@ -37,15 +74,15 @@ class UniProtClient:
         if endpoint not in ("search", "stream"):
             raise ValueError("endpoint must be 'search' or 'stream'")
         self.session = session or InstrumentedSession()
-        self.batch_size = batch_size  # accessions per OR-query (keeps URLs a sane length)
-        self.page_size = page_size    # results per page for the search endpoint (max 500)
+        self.batch_size = batch_size
+        self.page_size = page_size
         self.endpoint = endpoint
 
-    # ------------------------- low-level ------------------------- #
+
 
     @staticmethod
     def _query_for(accessions: Iterable[str]) -> str:
-        return " OR ".join(f"accession:{a}" for a in accessions)
+        return " OR ".join(f"accession:{a}" for a in _checked(accessions))
 
     def _search_paged(self, query: str, fmt: str, fields: str | None = None) -> str:
         """Run one query, following cursor pagination; return the concatenated body text."""
@@ -67,10 +104,11 @@ class UniProtClient:
             nxt = resp.links.get("next", {}).get("url")
             if not nxt:
                 break
-            url, params = nxt, None  # the next-link URL already carries cursor + query params
+            url, params = nxt, None
         return "".join(chunks)
 
     def _fetch_split(self, accessions: list[str], fmt: str) -> tuple[dict[str, str], list[str]]:
+        accessions = _checked(accessions)
         splitter = _SPLITTERS[fmt]
         merged: dict[str, str] = {}
         for i in range(0, len(accessions), self.batch_size):
@@ -80,7 +118,7 @@ class UniProtClient:
         missing = [a for a in accessions if a not in merged]
         return ordered, missing
 
-    # ------------------------- public API ------------------------- #
+
 
     def fetch_fasta(self, accessions: list[str]) -> tuple[dict[str, str], list[str]]:
         """FASTA per accession. Returns ``(records_in_input_order, missing_accessions)``."""
@@ -92,11 +130,12 @@ class UniProtClient:
 
     def fetch_fields(self, accessions: list[str], fields: list[str], fmt: str = "tsv") -> str:
         """Field-selected retrieval (``tsv`` or ``json``) for when full entries are not needed."""
+        accessions = _checked(accessions)
         out = [
             self._search_paged(
-                self._query_for(list(accessions)[i : i + self.batch_size]), fmt, fields=",".join(fields)
+                self._query_for(accessions[i : i + self.batch_size]), fmt, fields=",".join(fields)
             )
-            for i in range(0, len(list(accessions)), self.batch_size)
+            for i in range(0, len(accessions), self.batch_size)
         ]
         return "".join(out)
 
@@ -114,7 +153,7 @@ class UniProtClient:
              "records": {fmt: {acc: text}}, "missing": {fmt: [...]},
              "http": {"requests": n, "bytes_downloaded": n, "retries": n}}
         """
-        accessions = list(accessions)
+        accessions = _checked(accessions)
         records: dict[str, dict[str, str]] = {}
         missing: dict[str, list[str]] = {}
         for fmt in formats:

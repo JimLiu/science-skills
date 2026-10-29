@@ -40,15 +40,18 @@ the repo is cloned in-job (no PyPI dist; checkpoints bundled).
 
 ```bash
 pip install torch numpy   # if not already present
-git clone --depth 1 https://github.com/dauparas/ProteinMPNN.git proteinmpnn
-cd proteinmpnn
+# pinned for supply-chain hygiene — bump via PR (SHA matches envs/proteomics_gpu.py)
+git clone https://github.com/dauparas/ProteinMPNN.git proteinmpnn
+# One command: if the pinned commit cannot be checked out, you stay outside the clone.
+# If it fails, stop — cd'ing in by hand would run the steps below on unpinned code.
+git -C proteinmpnn checkout 8907e6671bfbfc92303b5f79c4b5e6ce47cdef57 && cd proteinmpnn
 python protein_mpnn_run.py \
   --pdb_path backbone.pdb --pdb_path_chains "A" \
   --out_folder out --num_seq_per_target 16 \
   --sampling_temp "0.1" --use_soluble_model
 ```
 
-The runner uses repo-relative imports, so the `cd` line is load-bearing —
+The runner uses repo-relative imports, so the `cd` step is load-bearing —
 invoking the script by absolute path from elsewhere fails with
 `ModuleNotFoundError`. If you want threaded designed-sequence PDBs as well,
 the LigandMPNN runner accepts `--model_type soluble_mpnn` (see `ligandmpnn`
@@ -73,9 +76,9 @@ solubility cost to keep the fold. Layering `--omit_AAs "CW"` or a per-position
 bias on top is fine, but check that the resulting designs still fold (via
 `boltz` or `esmfold2`) before assuming the constraint was free.
 
-## "Crystallisable" training set ≠ "soluble in your host" — keep an orthogonal filter
+## "Crystallizable" training set ≠ "soluble in your host" — keep an orthogonal filter
 
-The training set is "structures that were soluble enough to crystallise," which
+The training set is "structures that were soluble enough to crystallize," which
 correlates with but is not the same as "expresses solubly in E. coli at 37 °C."
 For campaigns where expression yield is the bottleneck, rank the soluble-MPNN
 output by an orthogonal sequence-based predictor before committing wet-lab

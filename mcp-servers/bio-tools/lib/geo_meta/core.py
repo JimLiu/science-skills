@@ -35,15 +35,15 @@ ACC_CGI = "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi"
 from mcp_servers_common.ua import contact_email
 
 TOOL_NAME = "geo-meta"
-# Operator contact (legal Y12): NCBI_EMAIL > user-consented
-# OPERON_CONTACT_EMAIL > omit. NCBI accepts omitting email=.
+
+
 TOOL_EMAIL = os.environ.get("NCBI_EMAIL") or contact_email()
 
 _GSE_RE = re.compile(r"^GSE\d+$")
 
-# esummary (db=gds, version 2.0) fields propagated into the output record.
-# Everything else in the docsum is dropped (notably 'geo2r', 'ssinfo', 'subsetinfo',
-# 'extrelations', which are presentation/bookkeeping fields).
+
+
+
 ESUMMARY_FIELDS = (
     "uid",
     "accession",
@@ -65,12 +65,12 @@ ESUMMARY_FIELDS = (
     "entrytype",
 )
 
-# Fields dropped by canonicalize() because they describe the retrieval event,
-# not the scientific content.
+
+
 VOLATILE_FIELDS = ("provenance",)
 
 
-# --------------------------------------------------------------------------- eutils
+
 def _eutils_params(extra: dict[str, Any]) -> dict[str, Any]:
     params: dict[str, Any] = {"tool": TOOL_NAME}
     if TOOL_EMAIL:
@@ -113,13 +113,13 @@ def esummary_gds(client: PoliteClient, uids: list[str]) -> dict[str, dict[str, A
 
 def _trim_esummary(doc: dict[str, Any]) -> dict[str, Any]:
     trimmed = {k: doc.get(k) for k in ESUMMARY_FIELDS if k in doc}
-    # n_samples is usually an int, but some db=gds docsums carry "" — normalize to int or None.
+
     if "n_samples" in trimmed:
         try:
             trimmed["n_samples"] = int(trimmed["n_samples"])
         except (TypeError, ValueError):
             trimmed["n_samples"] = None
-    # The docsum 'samples' list (accession + title) is kept, sorted for determinism.
+
     samples = doc.get("samples") or []
     trimmed["samples"] = sorted(
         ({"accession": s.get("accession"), "title": s.get("title")} for s in samples),
@@ -142,7 +142,7 @@ def resolve_accessions(client: PoliteClient, accessions: list[str]) -> dict[str,
     return {acc: docs[acc] for acc in accessions}
 
 
-# --------------------------------------------------------------------------- SOFT headers
+
 def fetch_soft_brief(client: PoliteClient, accession: str, targ: str) -> str:
     """Fetch acc.cgi brief text for one accession (targ='self' or 'gsm')."""
     if targ not in {"self", "gsm"}:
@@ -157,7 +157,7 @@ def fetch_soft_brief(client: PoliteClient, accession: str, targ: str) -> str:
     return text
 
 
-# --------------------------------------------------------------------------- assembly
+
 def _assemble_series_record(
     accession: str,
     esummary_doc: dict[str, Any],
@@ -262,7 +262,7 @@ def search_series(
             client.close()
 
 
-# --------------------------------------------------------------------------- canonicalization
+
 def canonicalize(record: dict[str, Any]) -> bytes:
     """Canonical byte representation of a record for run-to-run comparison.
 
@@ -274,7 +274,7 @@ def canonicalize(record: dict[str, Any]) -> bytes:
     return json.dumps(cleaned, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
 
 
-# --------------------------------------------------------------------------- battery runner
+
 def run_battery(battery: dict[str, Any], client: Optional[PoliteClient] = None) -> dict[str, Any]:
     """Run the full pinned battery (series accessions + search specs).
 

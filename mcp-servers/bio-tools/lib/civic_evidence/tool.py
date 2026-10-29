@@ -13,8 +13,8 @@ from .records import (ASSERTION_FIELDS, DISEASE_FIELDS, EVIDENCE_FIELDS,
                       GENE_FIELDS, MOLECULAR_PROFILE_FIELDS, THERAPY_FIELDS,
                       VARIANT_CORE_FIELDS, normalize)
 
-# The server silently caps `first` at 100 (requesting 200 still returns 100
-# nodes), so 100 is both the default and the effective maximum page size.
+
+
 MAX_PAGE_SIZE = 100
 
 
@@ -39,7 +39,7 @@ class CivicEvidence:
         self.client = client or CivicClient()
         self.page_size = min(page_size, MAX_PAGE_SIZE)
 
-    # -- pagination core -----------------------------------------------------
+
     def _paged(self, field: str, arg_decls: str, arg_refs: str,
                variables: dict, node_fields: str) -> dict:
         """Walk one Relay connection to completion; verify against totalCount."""
@@ -83,7 +83,7 @@ class CivicEvidence:
                 "found": rec is not None,
                 "record": normalize(rec) if rec is not None else None}
 
-    # -- 1/2: genes ------------------------------------------------------------
+
     def search_genes(self, entrez_symbol: str) -> dict:
         """Genes matching an exact Entrez symbol (CIViC genes(entrezSymbols:)).
 
@@ -104,7 +104,7 @@ class CivicEvidence:
         out["records"].sort(key=lambda r: r["id"])
         return out
 
-    # -- 3/4: variants ----------------------------------------------------------
+
     def get_variant(self, variant_id: int) -> dict:
         return self._single("variant", variant_id, VARIANT_CORE_FIELDS)
 
@@ -120,12 +120,12 @@ class CivicEvidence:
         out["records"].sort(key=lambda r: r["id"])
         return out
 
-    # -- 5/6: evidence ------------------------------------------------------------
+
     def get_evidence_item(self, evidence_id: int) -> dict:
         return self._single("evidenceItem", evidence_id, EVIDENCE_FIELDS)
 
     EVIDENCE_FILTERS = {
-        # python kwarg -> (GraphQL arg, GraphQL type)
+
         "disease_name": ("diseaseName", "String"),
         "therapy_name": ("therapyName", "String"),
         "evidence_level": ("evidenceLevel", "EvidenceLevel"),
@@ -180,7 +180,7 @@ class CivicEvidence:
         "summary": ("summary", "String"),
     }
 
-    # -- 7/8: assertions ---------------------------------------------------------
+
     def get_assertion(self, assertion_id: int) -> dict:
         return self._single("assertion", assertion_id, ASSERTION_FIELDS)
 
@@ -213,7 +213,7 @@ class CivicEvidence:
         out["query"] = {"mode": mode, "filters": dict(filters)}
         return out
 
-    # -- 9/10: molecular profiles ---------------------------------------------------
+
     def get_molecular_profile(self, mp_id: int) -> dict:
         return self._single("molecularProfile", mp_id, MOLECULAR_PROFILE_FIELDS)
 
@@ -225,7 +225,7 @@ class CivicEvidence:
         out["records"].sort(key=lambda r: r["id"])
         return out
 
-    # -- 11/12: diseases & therapies ---------------------------------------------------
+
     def search_diseases(self, name: str) -> dict:
         """Diseases by name substring, fully paginated (sorted by id)."""
         out = self._paged("diseases", ", $name: String", ", name: $name",
@@ -242,7 +242,7 @@ class CivicEvidence:
         out["records"].sort(key=lambda r: r["id"])
         return out
 
-    # -- battery driver ---------------------------------------------------------
+
     def run_battery(self, battery: dict) -> dict:
         """Run the pinned battery spec (bench/battery.json) -> combined output."""
         out: dict = {"items": []}

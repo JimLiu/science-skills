@@ -1,75 +1,164 @@
 """ModalProvider — the Modal-specific shim. The only file that imports `modal`.
 
-This process runs network-isolated; the host arranges a SOCKS5 proxy on
-loopback and an env var telling us where. import_and_patch() runs after
-the credential is in hand and does three things in order:
-  1. detour grpclib through that SOCKS5 proxy (it has no native proxy
-     support) so the Modal control plane and per-task workers all reach
-     the host's domain filter
-  2. force aiohttp trust_env=True so blob uploads honour HTTPS_PROXY
-  3. in repl mode only, wrap Sandbox.create (reject gpu=, clamp timeout,
-     sanitize owner-key tags — the preload's exact self-stamp passes,
-     plants are dropped) and Sandbox.set_tags (sanitize, and re-merge the
-     sandbox's current owner keys: the real SDK replaces the whole tag
-     list) — a redirect to the job surface, not a hard boundary."""
+This process runs network-confined; the host's sandbox wrap leaves it exactly
+one way out — a loopback proxy that fronts the byoc DomainFilter (which one
+is `_proxy_url()`'s table). import_and_patch() runs after the credential is
+in hand and does three things in order:
+  1. detour grpclib through that proxy (it has no native proxy support) so
+     the Modal control plane and per-task workers all reach the host's
+     domain filter
+  2. force aiohttp trust_env=True so blob uploads honor HTTPS_PROXY
+  3. in repl mode only, wrap Sandbox.create (reject gpu= and over-cap timeout,
+     sanitize owner-key tags — the preload's exact self-stamp passes, plants
+     are dropped) and Sandbox.set_tags (sanitize, and re-merge the sandbox's
+     current owner keys: the real SDK replaces the whole tag list);
+     Sandbox._create shares the create guard. When the host forces no network,
+     create, _create, App.function and App.cls are forced too, and one shared
+     list of network options, Sandbox._experimental_create, App.server and the
+     SDK's change-the-network call are refused — a redirect to the job
+     surface, not a hard boundary."""
 from __future__ import annotations
 
+import collections.abc as _abc
+import inspect
 import math
 import os
 import re
 from typing import Any, Callable, Iterable, NoReturn
 
-from operon_compute_provider import WORK, ByocError, ExecResult
+from operon_compute_provider import WORK, ByocError, ExecResult, in_appcontainer
 
-# Ownership tag (the tenancy boundary every op checks). Renamed twice — first
-# in the claude-bioscience rebrand (operon_owner →
-# claude-bioscience-install-id), then in the bioscience→science rename. Both
-# legacy keys are still READ (read_owner / list_owned) so pre-rename sandboxes
-# stay owned-and-reapable, but never written — create_sandbox stamps only the
-# new key.
+
+
+
+
+
+
 OWNER_TAG = "claude-science-install-id"
 LEGACY_OWNER_TAGS = ("claude-bioscience-install-id", "operon_owner")
-# App pre-rebrand installs created sandboxes under. Read-only: list_owned
-# scans it so pre-rebrand sandboxes stay reapable. Never used on a create
-# path — the unconfigured fallback is FALLBACK_APP_NAME.
+
+
+
 LEGACY_APP_NAME = "operon-modal"
-# Create-side fallback when the host doesn't supply app_name (mid-upgrade
-# boot, before DB seeding). Mirrors core/src/tools/compute/appName.ts
-# FALLBACK_MODAL_APP_NAME.
+
+
+
 FALLBACK_APP_NAME = "claude-science-default"
+
+
+
+
+
+
+
+STAGING_APP_NAME = "egress-staging"
 KERNEL_TIMEOUT_CAP_S = 1800
 
 
-def _sanitize_repl_tags(tags: Any) -> Any:
+
+MODAL_SERVER_URL = "https://api.modal.com"
+NO_USER_CONFIG_PATH = os.path.join(os.devnull, "claude-science-no-user-config.toml")
+
+
+
+TOKEN_INFO_TIMEOUT_S = 20.0
+
+
+def _plain_str(x: Any) -> str:
+    """Coerce to an EXACT built-in str. Plain str(x) is not enough: a str
+    subclass that overrides __str__ to return self comes back from str()
+    as the same lying instance, so one with a dishonest __eq__ (and
+    str.__hash__) would survive normalization, evade the owner-key
+    comparisons below, and still serialize as the owner key on the wire.
+    (str.__new__(str, s) is NOT safe either — it dispatches back through
+    __str__ and hands the lying instance straight back.) "".join reads
+    the underlying text at the C level with no user hook; for a non-str
+    input the one unavoidable __str__ call happens first, and the policy
+    then runs on (and the SDK later serializes) the exact-str copy of
+    whatever it returned."""
+    s = x if isinstance(x, str) else str(x)
+    return s if type(s) is str else "".join((s,))
+
+
+def _sanitize_repl_tags(tags: Any, self_id: str) -> Any:
     """Owner-key policy for repl-supplied tag dicts. All legacy spellings are
     always dropped (never legitimately written anymore). The new spelling is
-    kept ONLY when its value equals the host-exported install id — that is
+    kept ONLY when its value equals ``self_id`` — the host-exported install
+    id, snapshotted at guard-install time — that is
     the kernel preload's own _OP_TAGS self-stamp on build_env hydrate
     sandboxes, which MUST survive so a crashed hydrate stays listable and
     reapable. Any other value is a plant and is dropped: a cell can only
     "self-stamp" exactly what the host would stamp anyway."""
     if not isinstance(tags, dict):
-        return tags
-    self_id = os.environ.get("OPERON_BYOC_INSTALL_ID", "")
+
+
+
+
+
+
+
+
+        if isinstance(tags, _abc.Mapping):
+            tags = dict(tags)
+        else:
+            raise ByocError(
+                "invalid_request",
+                "tags must be a dict of str -> str",
+            )
     out = {}
     for k, v in tags.items():
+
+
+
+
+
+
+
+
+
+
+        k = _plain_str(k)
+        v = _plain_str(v)
         if k in LEGACY_OWNER_TAGS:
             continue
         if k == OWNER_TAG and (not self_id or v != self_id):
             continue
         out[k] = v
     return out
-# PID-1 inactivity watchdog: the sandbox self-terminates after this much
-# wall-clock with no job activity, so a dead daemon (or a terminate that
-# never landed) leaks at most ~30 min of idle billing instead of the full
-# Modal-side wall (CONTAINER timeout + harvest_margin_s (600) + 300 s
-# teardown grace — see create_sandbox; the per-job timeout_seconds guard
-# no longer sizes the wall), which stays as the hard backstop. At the 12 h
-# container default that backstop is 12h+900s. 30 min is also the post-job
-# harvest grace: the poller normally harvests within seconds of `.phase`
-# appearing, so only a daemon that is down for >30 min loses outputs to
-# the self-exit — the right trade against an idle GPU billing for hours.
-IDLE_EXIT_S = 30 * 60
+
+
+def _repl_identity_tags() -> dict[str, str]:
+    """Default identity stamp for repl-side Sandbox.create — the same
+    host-exported values the kernel preload's _OP_TAGS reads
+    (providers/modal/spec.ts in the host core). Called exactly ONCE,
+    at guard-install time, so the stamp snapshots the env the HOST
+    exported — cell-side env mutation can't alter it. A kernel cell that
+    created a sandbox WITHOUT tags used to leave it untagged, which made it
+    invisible to list_owned and therefore to every reaper pass and to the
+    Disable sweep (consent revocation) — an unattributable billable object.
+    Empty env values are dropped; an environment with no install id stamps
+    NOTHING — not even org/frame — because without the owner key the
+    sandbox is invisible to list_owned regardless, and a partial stamp
+    would only assert an identity the host never vouched for."""
+    ident = {k: v for k, v in (
+        (OWNER_TAG, os.environ.get("OPERON_BYOC_INSTALL_ID", "")),
+        ("claude-science-org", os.environ.get("OPERON_BYOC_ORG_ID", "")),
+        ("claude-science-frame", os.environ.get("OPERON_BYOC_FRAME_ID", "")),
+    ) if v}
+    return ident if OWNER_TAG in ident else {}
+
+
+
+
+
+
+
+
+
+
+
+
+IDLE_EXIT_S = 15 * 60
 WATCHDOG_POLL_S = 30
 
 
@@ -105,9 +194,9 @@ def _watchdog_cmd(work: str = WORK, idle_exit_s: float = IDLE_EXIT_S,
     defaults. The loop counts *polls* (integer) rather than summing
     ``poll_s`` in shell arithmetic, so ``poll_s`` may be fractional
     (selftest sub-second scale); at the production constants the exit
-    happens after the same 60 idle polls = 1800 s as before."""
-    # Consecutive idle polls that add up to idle_exit_s (ceil: never exit
-    # earlier than the requested idle window).
+    happens after 30 idle polls = 900 s (the 15 min IDLE_EXIT_S)."""
+
+
     idle_polls = max(1, math.ceil(idle_exit_s / poll_s))
     return (
         f": > {mark}; idle=0; "
@@ -130,19 +219,32 @@ class ModalProvider:
     def __init__(self, *, repl: bool = False):
         self._repl = repl
         self._modal: Any = None
+        self._mock = False
         self._app: Any = None
         self._app_name: str = FALLBACK_APP_NAME
         self._prior_app_names: list[str] = []
-        # Modal Environment (compute_providers.modal_environment, rides
-        # req.json beside app_name). None == not configured == every
-        # environment-scoped SDK call OMITS the kwarg, so Modal resolves
-        # its own default (MODAL_ENVIRONMENT > ~/.modal.toml profile >
-        # the workspace default env). Never defaulted to "main" here.
+
+
+
+
+
+
+
         self._environment: str | None = None
 
-    # ── auth + import ────────────────────────────────────────────────────────
+
 
     def apply_auth(self, creds: dict[str, str]) -> None:
+
+
+
+
+
+
+
+
+        os.environ["MODAL_CONFIG_PATH"] = NO_USER_CONFIG_PATH
+        os.environ["MODAL_SERVER_URL"] = MODAL_SERVER_URL
         os.environ["MODAL_TOKEN_ID"] = creds["token_id"]
         os.environ["MODAL_TOKEN_SECRET"] = creds["token_secret"]
 
@@ -161,6 +263,11 @@ class ModalProvider:
         literal "main"."""
         if isinstance(name, str) and name:
             self._environment = name
+
+
+
+
+            os.environ["MODAL_ENVIRONMENT"] = name
 
     def _env_kw(self) -> dict[str, Any]:
         """The `environment_name=` kwarg for every Modal call that resolves
@@ -186,38 +293,39 @@ class ModalProvider:
             ]
 
     def import_and_patch(self) -> None:
-        # The repl bootstrap exports the configured Modal Environment, but the
-        # helper prologue scrubs every `MODAL_*` var it inherited (the user's
-        # shell may carry stray Modal/AWS config or credentials) — so the
-        # SDK's own channel never survives to this point. The host also
-        # exports the same value as OPERON_BYOC_ENVIRONMENT, which the scrub
-        # leaves alone: re-publish it under the SDK's name now (post-scrub,
-        # pre-import) and record it for `_env_kw()`, so every name this
-        # process resolves — the kernel preload's App.lookup, build_env(),
-        # an env file's own Volume.from_name — lands in the configured
-        # Environment. Absent the var (oneshot path, or no Environment
-        # configured) nothing is invented.
+
+
+
+
+
+
+
+
+
+
+
         _env_cfg = os.environ.get("OPERON_BYOC_ENVIRONMENT")
         if _env_cfg:
             os.environ.setdefault("MODAL_ENVIRONMENT", _env_cfg)
             self.set_environment(_env_cfg)
         if os.environ.get("OPERON_MOCK_MODAL", "").lower() in {"1", "true", "yes", "on"}:
-            # CI / dev mode: swap the real SDK for the in-process fake. The
-            # fake lives next to operon_compute_provider on disk (same
-            # assets/compute dir), so it's already on sys.path when the
-            # helper runs. Skipping the aiohttp/grpclib patches is the
-            # point — neither is installed on a CI runner, and the mock
-            # never opens a socket.
-            import sys  # noqa: PLC0415
-            import mock_modal as modal  # noqa: PLC0415
+
+
+
+
+
+
+            import sys
+            import mock_modal as modal
             sys.modules.setdefault("modal", modal)
             self._modal = modal
+            self._mock = True
             if self._repl:
                 self._install_gpu_guard(modal)
             return
         self._patch_aiohttp_trust_env()
         self._patch_grpclib_socks()
-        import modal  # noqa: PLC0415
+        import modal
 
         self._modal = modal
         if self._repl:
@@ -234,7 +342,7 @@ class ModalProvider:
 
     def install_unauth_hook(self, on_expired: Callable[[], NoReturn]) -> None:
         try:
-            import grpclib.exceptions  # noqa: PLC0415
+            import grpclib.exceptions
 
             orig = grpclib.exceptions.GRPCError.__init__
 
@@ -243,11 +351,11 @@ class ModalProvider:
                 if getattr(status, "name", "") == "UNAUTHENTICATED":
                     on_expired()
 
-            grpclib.exceptions.GRPCError.__init__ = hook  # type: ignore[method-assign]
+            grpclib.exceptions.GRPCError.__init__ = hook
         except Exception:
             pass
 
-    # ── helper-mode ops ──────────────────────────────────────────────────────
+
 
     def create_sandbox(self, spec: dict[str, Any], install_id: str,
                        tags: dict[str, str] | None = None) -> str:
@@ -256,24 +364,24 @@ class ModalProvider:
         try:
             kw: dict[str, Any] = {
                 "image": self._resolve_image(spec["image"]),
-                # Modal's wall = container timeout + harvest margin + 300 s
-                # slack. The wrapper's watchdog fires first (wall − margin)
-                # and stages outputs; this wall is the never-user-facing
-                # backstop. The margin is threaded from the host
-                # (BYOC_HARVEST_MARGIN_SEC rides the create spec) so wall
-                # and watchdog share one number; 600 is only the fallback
-                # for an old host that doesn't send it.
+
+
+
+
+
+
+
                 "timeout": int(spec["timeout"])
                 + int(spec.get("harvest_margin_s") or 600)
                 + 300,
                 "app": self._get_app(),
-                # Tags ride the create call (modal>=1.4.3 supports tags=) so
-                # there is no crash window where a billable sandbox exists
-                # untagged — the old post-create set_tags left exactly that
-                # gap. Owner is merged LAST and ALL legacy owner keys are
-                # stripped from the incoming tags: a host-supplied entry can
-                # never override (or smuggle in via a legacy spelling) the
-                # ownership scope list_owned/read_owner key on.
+
+
+
+
+
+
+
                 "tags": {
                     **{k: v for k, v in (tags or {}).items()
                        if k not in LEGACY_OWNER_TAGS},
@@ -287,40 +395,43 @@ class ModalProvider:
                 kw["volumes"] = {p: m.Volume.from_name(n, create_if_missing=True,
                                                        **self._env_kw())
                                  for p, n in spec["volumes"].items()}
-            # Outbound-domain allowlist, HOST-STAMPED beside harvest_margin_s
-            # from compute_providers.egress_policy (a column the agent has no
-            # edit path to). It is deliberately NOT a provider_params field —
-            # ModalParamsSchema is .strict() and rejects it — so the agent
-            # can never set or widen its own fence. Three states, kept
-            # exactly distinct:
-            #   absent / None  -> NEITHER kwarg is set: the create call is
-            #                     byte-identical to a build that predates the
-            #                     feature (every NULL/legacy row, explicit
-            #                     unrestricted, and mirror-with-isolation-off).
-            #   non-empty      -> outbound_domain_allowlist=[...]. Modal's
-            #                     allowlist is Beta and TLS/443-only; the
-            #                     SKILL.md egress section documents what that
-            #                     does and doesn't cover.
-            #   []             -> block_network=True. An EMPTY allowlist is a
-            #                     real answer ("nothing survived the merge"),
-            #                     never silently widened to "no allowlist".
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
             oda = spec.get("egress_allowlist")
+
+            if os.environ.get("OPERON_BYOC_NO_NETWORK"):
+                oda = []
             if oda is not None:
                 if oda:
                     kw["outbound_domain_allowlist"] = [str(d) for d in oda]
                 else:
                     kw["block_network"] = True
-            # Explicit keepalive: jobs run as a detached background process
-            # inside the sandbox; without a long-lived PID 1, Modal would
-            # reap the container before the job finishes or its output can
-            # be collected. The keepalive is the inactivity watchdog (see
-            # _watchdog_cmd) rather than a bare `sleep <timeout>`, so an
-            # abandoned sandbox self-terminates after IDLE_EXIT_S instead
-            # of billing out the whole container-timeout+margin+300 wall.
+
+
+
+
+
+
+
             sb = m.Sandbox.create("bash", "-c", _watchdog_cmd(), **kw)
         except ByocError:
             raise
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             if sb is not None:
                 try:
                     sb.terminate()
@@ -339,7 +450,7 @@ class ModalProvider:
             kw["timeout"] = timeout
         try:
             p = sb.exec(*argv, **kw)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise self._map_err(e) from None
         if stdin is not None:
             for chunk in stdin:
@@ -359,12 +470,12 @@ class ModalProvider:
                 name, create_if_missing=False, **self._env_kw())
         except ByocError:
             raise
-        except Exception as e:  # noqa: BLE001
-            # Skip ONLY on the SDK's own NotFoundError type (modal.exception
-            # .NotFoundError; the mock mirrors the class name). _map_err's
-            # repr-substring routing stays display-only here — a transient/
-            # internal error whose MESSAGE merely mentions "NotFound" must
-            # fail the reconcile, not silently shrink it.
+        except Exception as e:
+
+
+
+
+
             if type(e).__name__ == "NotFoundError":
                 return None
             raise self._map_err(e) from None
@@ -375,9 +486,10 @@ class ModalProvider:
           - configured app + new key       (anything created post-rename)
           - configured app + each legacy key (created mid-rollout under the
             new app by a build that still wrote an older key)
-          - the hardcoded fallback + legacy apps, each with new key + each
-            legacy key (covers the NULL-app_name fallback window and
-            pre-rebrand sandboxes respectively)
+          - the hardcoded fallback + legacy + staging apps, each with new
+            key + each legacy key (covering the NULL-app_name fallback
+            window, pre-rebrand sandboxes, and staging workers created
+            under the docs' old "egress-staging" recipe respectively)
           - each previously-configured app + new key + each legacy key
             (sandboxes created before a Default-app rename;
             compute_providers.prior_app_names)
@@ -390,7 +502,14 @@ class ModalProvider:
                 (self._get_app(), OWNER_TAG),
                 *[(self._get_app(), k) for k in LEGACY_OWNER_TAGS],
             ]
-            for extra_name in (FALLBACK_APP_NAME, LEGACY_APP_NAME):
+
+
+
+
+
+
+            for extra_name in (FALLBACK_APP_NAME, LEGACY_APP_NAME,
+                               STAGING_APP_NAME):
                 if extra_name == self._app_name:
                     continue
                 extra = self._lookup_existing_app(extra_name)
@@ -398,8 +517,9 @@ class ModalProvider:
                     combos.append((extra, OWNER_TAG))
                     combos.extend((extra, k) for k in LEGACY_OWNER_TAGS)
             for prior_name in self._prior_app_names:
-                if prior_name in (self._app_name, FALLBACK_APP_NAME, LEGACY_APP_NAME):
-                    continue  # already covered above
+                if prior_name in (self._app_name, FALLBACK_APP_NAME,
+                                  LEGACY_APP_NAME, STAGING_APP_NAME):
+                    continue
                 prior = self._lookup_existing_app(prior_name)
                 if prior is not None:
                     combos.append((prior, OWNER_TAG))
@@ -417,22 +537,22 @@ class ModalProvider:
             return out
         except ByocError:
             raise
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise self._map_err(e) from None
 
     def read_owner(self, sandbox_id: str) -> str | None:
         try:
             tags = self._modal.Sandbox.from_id(sandbox_id).get_tags()
-            # Dual-read: pre-rename sandboxes carry only a legacy key.
+
             return tags.get(OWNER_TAG) or next(
                 (tags[k] for k in LEGACY_OWNER_TAGS if k in tags), None)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise self._map_err(e) from None
 
     def terminate(self, sandbox_id: str) -> None:
         try:
             self._modal.Sandbox.from_id(sandbox_id).terminate()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise self._map_err(e) from None
 
     def list_dir(self, root: str, path: str = "/", *, limit: int | None = None) -> list[dict[str, Any]]:
@@ -442,27 +562,27 @@ class ModalProvider:
             vol = m.Volume.from_name(root, create_if_missing=False,
                                      **self._env_kw())
             entries = []
-            # Real Modal's Volume.iterdir defaults to recursive=True; the
-            # file browser wants immediate children only.
+
+
             for e in vol.iterdir(path or "/", recursive=False):
                 entries.append({
                     "name": e.path.rsplit("/", 1)[-1],
                     "type": "dir" if e.type == m.volume.FileEntryType.DIRECTORY else "file",
                     "size": e.size or 0,
-                    # RemoteDirEntry.mtime is epoch ms; Modal's FileEntry.mtime
-                    # is epoch seconds.
+
+
                     "mtime": int(e.mtime * 1000) if e.mtime is not None else None,
                 })
-            # Sort before slicing so ``limit`` keeps a best-effort
-            # alphabetically-first N (dirs before files; casefolded primary
-            # key roughly mirrors the TS side's localeCompare) — Modal
-            # doesn't document iterdir order. The cap still bounds what gets
-            # serialized through the helper.
+
+
+
+
+
             entries.sort(
                 key=lambda x: (x["type"] != "dir", x["name"].casefold(), x["name"])
             )
             return entries[:limit] if limit is not None else entries
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise self._map_err(e) from None
 
     def list_volumes(self) -> list[dict[str, Any]]:
@@ -472,21 +592,21 @@ class ModalProvider:
         m = self._modal
         try:
             out: list[dict[str, Any]] = []
-            # modal==1.4.1 enumerates volumes via the Volume.objects manager
-            # namespace, not a Volume classmethod. The returned handles are
-            # hydrated, so info() reads local metadata without a per-volume
-            # round-trip. VolumeInfo.created_at is a datetime; convert to
-            # epoch ms here to match RemoteDirEntry.mtime downstream.
-            # Environment-scoped like every other BY-NAME resolution: without
-            # the kwarg this landing view enumerates the DEFAULT environment
-            # while list_dir/read_file resolve names in the CONFIGURED one,
-            # so the browser lists volumes it then cannot open (review
-            # r3477802793). Unset → kwarg omitted, byte-identical to before.
+
+
+
+
+
+
+
+
+
+
             for v in m.Volume.objects.list(**self._env_kw()):
                 name = v.name
                 if not name:
-                    # Volume.name is Optional[str]; an anonymous handle can't
-                    # be re-opened via from_name so there's nothing to browse.
+
+
                     continue
                 info = v.info()
                 ca = getattr(info, "created_at", None)
@@ -498,7 +618,7 @@ class ModalProvider:
                 })
             out.sort(key=lambda x: (x["name"].casefold(), x["name"]))
             return out
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise self._map_err(e) from None
 
     def read_file(self, root: str, path: str) -> Iterable[bytes]:
@@ -513,10 +633,46 @@ class ModalProvider:
             yield from vol.read_file(path.lstrip("/"))
         except ByocError:
             raise
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise self._map_err(e) from None
 
-    # ── internals ────────────────────────────────────────────────────────────
+    def token_info(self) -> dict[str, str]:
+        """Who the token in hand IS, asked of Modal itself — the same RPC
+        `modal token info` makes (TokenInfoGet: one unary call authenticated
+        by the token pair; a token's workspace is fixed for its lifetime).
+        The host's organization-policy workspace allowlist matches on the
+        returned ``workspace_name`` (``workspace_id`` rides along) instead of
+        the name a ~/.modal.toml profile merely declares. Nothing here reads
+        the toml: the credential arrived over the auth handshake."""
+        try:
+            if self._mock:
+
+
+                return dict(self._modal.token_info())
+
+
+
+            from modal._utils.async_utils import synchronizer
+            from modal.client import _Client
+            from modal_proto import api_pb2
+
+            @synchronizer.create_blocking
+            async def _token_info_get() -> Any:
+                client = await _Client.from_env()
+                return await client.stub.TokenInfoGet(
+                    api_pb2.TokenInfoGetRequest(), retry=None,
+                    timeout=TOKEN_INFO_TIMEOUT_S)
+
+            resp = _token_info_get()
+            return {
+                "token_id": str(resp.token_id),
+                "workspace_id": str(resp.workspace_id),
+                "workspace_name": str(resp.workspace_name),
+            }
+        except Exception as e:
+            raise self._map_err(e) from None
+
+
 
     def _resolve_image(self, ref: str) -> Any:
         m = self._modal
@@ -533,32 +689,29 @@ class ModalProvider:
 
     def _patch_grpclib_socks(self) -> None:
         """grpclib has no proxy support. Detour Channel._create_connection
-        through SOCKS5 so both the control plane (api.modal.com) and
-        per-task workers (*.w.modal.host) resolve and connect via the
-        byoc DomainFilter. grpclib does its own TLS+ALPN over the SOCKS
-        tunnel, so the helper sees a real end-to-end TLS session — no
-        host-side termination needed.
-
-        On Linux this process runs in its own network namespace; the only
-        egress is a SOCKS5 listener at a fixed loopback port that bridges
-        out to the host's domain filter. On macOS there is no namespace
-        isolation, so the host injects the proxy's actual port via env."""
-        socks_port = self._socks_port()
-        if socks_port is None:
-            return  # direct-net (tests / unsandboxed)
+        through the proxy `_proxy_url()` names (a SOCKS5 bridge on POSIX,
+        the winsbx relay's HTTP CONNECT on native Windows — python-socks
+        speaks both) so the control plane (api.modal.com) and per-task
+        workers (*.w.modal.host) all resolve and connect via the byoc
+        DomainFilter. grpclib does its own TLS+ALPN over the tunnel, so the
+        helper sees a real end-to-end TLS session — no host-side
+        termination needed."""
+        proxy_url = self._proxy_url()
+        if proxy_url is None:
+            return
         try:
-            import asyncio  # noqa: PLC0415
-            import ssl  # noqa: PLC0415
+            import asyncio
+            import ssl
 
-            import grpclib.client  # noqa: PLC0415
-            from python_socks.async_.asyncio import Proxy  # noqa: PLC0415
+            import grpclib.client
+            from python_socks.async_.asyncio import Proxy
 
-            socks_url = f"socks5://127.0.0.1:{socks_port}"
+            proxy_kw = self._proxy_connect_kw(proxy_url)
 
-            async def via_socks(self_):  # type: ignore[no-untyped-def]
-                if self_._path is not None:  # unix path → unchanged
+            async def via_proxy(self_):
+                if self_._path is not None:
                     return await orig(self_)
-                proxy = Proxy.from_url(socks_url, rdns=True)
+                proxy = Proxy.from_url(proxy_url, **proxy_kw)
                 sock = await proxy.connect(self_._host, self_._port)
                 ssl_ctx = self_._ssl
                 if ssl_ctx is True:
@@ -572,38 +725,66 @@ class ModalProvider:
                 return protocol
 
             orig = grpclib.client.Channel._create_connection
-            grpclib.client.Channel._create_connection = via_socks  # type: ignore[method-assign]
+            grpclib.client.Channel._create_connection = via_proxy
         except Exception as e:
-            # Fail-closed: without the patch grpclib would attempt a
-            # direct connect and silently hang inside the isolated
-            # namespace. Surface a structured error instead of a timeout.
-            raise ByocError("network_bridge_down",
-                            f"grpclib SOCKS patch failed: {e!r}") from None
 
-    # Fixed port the host's bridge listens on inside the Linux network
-    # namespace. macOS has no namespace; the host passes the real proxy port
-    # via OPERON_BYOC_PROXY_SOCKS instead.
+
+
+            raise ByocError("network_bridge_down",
+                            f"grpclib proxy patch failed: {e!r}") from None
+
+
+
+
     _INNER_SOCKS_PORT = 1080
 
     @classmethod
-    def _socks_port(cls) -> int | None:
+    def _proxy_url(cls) -> str | None:
+        """The ONE egress decision both patches consume — None means dial
+        direct (unconfined: tests, mock, --dangerously-no-sandbox). Branch
+        order is the contract (pinned by mock_modal/_selftest.py):
+          1. Linux netns → the in-namespace SOCKS5 bridge;
+          2. macOS seatbelt → the host-loopback SOCKS5 port the wrap exports;
+          3. native Windows inside the winsbx AppContainer → host loopback is
+             unreachable, so the only way out is the n1 relay the launcher
+             stamped as HTTPS_PROXY (http://127.0.0.1:<relay> = HTTP CONNECT);
+             no row (an egress-less tier) → fail closed, never a direct dial.
+             Unconfined win32 (tests / mock) → direct, exactly as on POSIX."""
         if os.environ.get("OPERON_BYOC_SOCK_DIR"):
-            return cls._INNER_SOCKS_PORT
+            return f"socks5://127.0.0.1:{cls._INNER_SOCKS_PORT}"
         if p := os.environ.get("OPERON_BYOC_PROXY_SOCKS"):
-            return int(p)
+            return f"socks5://127.0.0.1:{int(p)}"
+        if os.name == "nt" and in_appcontainer():
+            relay = os.environ.get("HTTPS_PROXY")
+            if not relay:
+                raise ByocError(
+                    "network_bridge_down",
+                    "confined in a native-Windows AppContainer but the winsbx n1 "
+                    "relay row (HTTPS_PROXY) is absent — the sandbox has no egress "
+                    "tier for this kernel; refusing to dial the provider directly.",
+                )
+            return relay
         return None
 
-    def _patch_aiohttp_trust_env(self) -> None:
-        if self._socks_port() is None:
-            return  # unconfined: aiohttp default trust_env=False is fine
-        try:
-            from modal._utils import http_utils  # noqa: PLC0415
+    @staticmethod
+    def _proxy_connect_kw(proxy_url: str) -> dict[str, Any]:
+        """python-socks connect kwargs per proxy type: the SOCKS5 bridges are
+        handed the NAME (rdns) so the DomainFilter judges names — the Linux
+        namespace has no resolver at all; HTTP CONNECT carries the name by
+        construction and takes no rdns (python-socks 2.8.1 create_connector)."""
+        return {"rdns": True} if proxy_url.startswith("socks5://") else {}
 
-            # ClientSessionRegistry.get_session() takes no args (modal ≥1.1) —
-            # the earlier attempt to pass trust_env=True there hit TypeError at
-            # first blob op. Target the factory it delegates to instead, and
-            # flip the attr aiohttp reads per-request so modal's certifi/TLS
-            # connector setup is preserved verbatim.
+    def _patch_aiohttp_trust_env(self) -> None:
+        if self._proxy_url() is None:
+            return
+        try:
+            from modal._utils import http_utils
+
+
+
+
+
+
             orig = http_utils._http_client_with_tls
 
             def patched(timeout):
@@ -613,84 +794,287 @@ class ModalProvider:
 
             http_utils._http_client_with_tls = patched
         except Exception as e:
-            # Fail-closed: without trust_env, aiohttp blob I/O would
-            # ignore HTTPS_PROXY and hang opaquely inside the isolated
-            # namespace.
+
+
+
             raise ByocError(
                 "network_bridge_down",
                 f"aiohttp trust_env patch failed: {e!r} — blob I/O would bypass the proxy",
             ) from None
 
     def _install_gpu_guard(self, m: Any) -> None:
+
+
+
+        ident = _repl_identity_tags()
+        self_id = ident.get(OWNER_TAG, "")
         orig = m.Sandbox.create
 
-        def guarded(*a, **kw):
+
+        no_net = os.environ.get("OPERON_BYOC_NO_NETWORK", "")
+        envs_dir = os.environ.get("OPERON_BYOC_ENVS_DIR") or ""
+        net_lists = ("outbound_domain_allowlist", "outbound_cidr_allowlist",
+                     "inbound_cidr_allowlist", "cidr_allowlist", "proxy")
+        net_ports = ("encrypted_ports", "h2_ports", "unencrypted_ports")
+        buckets = tuple(c for c in (
+            getattr(m, "CloudBucketMount", None),
+            getattr(getattr(m, "cloud_bucket_mount", None),
+                    "_CloudBucketMount", None)) if isinstance(c, type))
+
+        def _force_no_network(what, kw, force=True, also=()):
+
+
+
+            asked = [k for k in net_lists if kw.get(k) is not None]
+            asked += [k for k in net_ports + tuple(also) if kw.get(k)]
+            vols = kw.get("volumes")
+            if isinstance(vols, _abc.Mapping):
+                asked += [f"volumes[{p!r}] (a cloud bucket)"
+                          for p, v in dict(vols).items()
+                          if isinstance(v, buckets)
+                          or type(v).__name__.endswith("CloudBucketMount")]
+            if asked:
+                raise ByocError(
+                    "invalid_request",
+                    f"{no_net} Network, port, proxy and cloud-bucket options "
+                    f"are refused on {what} from a cell here "
+                    f"({', '.join(asked)}). Remove the option. To download, "
+                    "do it at image-build time (builds keep their network) "
+                    "or, for a bundled environment, with "
+                    "build_env('<name>', hydrate=True).",
+                )
+            if force:
+                kw["block_network"] = True
+
+        def _create(orig, keep_network, a, kw, what="modal.Sandbox.create"):
             if kw.get("gpu"):
                 raise ByocError(
                     "invalid_request",
-                    "GPU sandboxes go through host.compute.create('byoc:modal', ...); "
-                    "that raises its own approval card.",
+
+
+
+                    "gpu= is not available in the compute_provider kernel — this "
+                    "surface is CPU-only env setup (build images, populate volumes, "
+                    "≤30-min probes). GPU work runs on the job surface, from the "
+                    "repl tool (control-plane kernel), in three steps: (1) "
+                    "c = host.compute.create('byoc:modal', provider_params="
+                    "{'gpu': 'A100', 'image': '<im-id or env name>', "
+                    "'timeout': 3600}); (2) job = c.submit_job(command='...', "
+                    "intent='...', inputs=[...], outputs=[...]); (3) end the "
+                    "cell and call the wait_for_notification tool for the "
+                    "compute_done payload. Build/record the image here first; "
+                    "pass it across as a string.",
                 )
+
+
+
+
+            if "timeout" in kw and kw["timeout"] is None:
+                del kw["timeout"]
             t = kw.get("timeout")
-            if t is None or t > KERNEL_TIMEOUT_CAP_S:
-                kw["timeout"] = KERNEL_TIMEOUT_CAP_S
-            if kw.get("tags"):
-                kw["tags"] = _sanitize_repl_tags(kw["tags"])
-            # NOTE(egress): the JOB path (host.compute.create -> _op_create ->
-            # create_sandbox above) stamps the provider's egress_policy as an
-            # outbound_domain_allowlist. THIS path -- a repl cell calling
-            # modal.Sandbox.create directly, incl. the kernel preload's
-            # build_env(hydrate=True) -- is deliberately NOT fenced yet. The
-            # other defaults this guard injects (the gpu reject, the timeout
-            # clamp) are CONSTANTS; the egress policy is per-provider DB
-            # state the host plumbs into the JOB approval flow but does NOT
-            # currently export into the compute_provider kernel's environment
-            # (no OPERON_BYOC_* variable carries it), and inventing a new env
-            # channel here would be a guess the host never validates. Like
-            # the rest of this guard it is a REDIRECT, not a boundary
-            # (bypassable via raw gRPC); the billing/consent bound on this
-            # path stays the byoc_kernel grant + Modal workspace quotas. The
-            # gap is recorded explicitly in core/assets/compute/SECURITY.md
-            # ("Accepted residuals") -- close it by exporting the merged list
-            # as an env var beside OPERON_BYOC_INSTALL_ID and reading it
-            # here, not by widening this kernel-side default in isolation.
+
+
+
+
+
+
+
+
+
+            if t is not None:
+                try:
+                    t_int = int(t)
+                except Exception:
+                    raise ByocError(
+                        "invalid_request",
+                        "timeout must be a number of seconds",
+                    ) from None
+                if t_int > KERNEL_TIMEOUT_CAP_S:
+                    raise ByocError(
+                        "invalid_request",
+                        f"timeout={t_int} exceeds the compute_provider kernel's "
+                        f"{KERNEL_TIMEOUT_CAP_S} s (30 min) sandbox cap — rejected, "
+                        "not clamped. Sandboxes created here are CPU probes/staging "
+                        "workers: each dies at its wall (outputs inside it are then "
+                        "unrecoverable), and the ≤1800 s bound is what lets the "
+                        "orphan reaper leave live kernel sandboxes alone. Fit the "
+                        "step in ≤1800 s (split it, or checkpoint to a Volume), or "
+                        "run long work on the job surface from the repl tool: "
+                        "host.compute.create('byoc:modal', provider_params={..., "
+                        "'timeout': <s>}) → c.submit_job(...) → wait_for_notification "
+                        "(container timeout honored up to Modal's ~24 h platform cap).",
+                    )
+                kw["timeout"] = t_int
+            if kw.get("tags") is not None:
+
+
+
+
+                kw["tags"] = _sanitize_repl_tags(kw["tags"], self_id)
+
+
+
+
+
+
+
+
+
+
+
+            cur_tags = kw.get("tags")
+            if ident and (cur_tags is None or isinstance(cur_tags, dict)):
+                merged = {**ident, **(cur_tags or {})}
+                if OWNER_TAG in ident:
+                    merged[OWNER_TAG] = ident[OWNER_TAG]
+                kw["tags"] = merged
+
+
+
+
+
+            if no_net:
+
+                _force_no_network(what, kw, not keep_network)
+                if not keep_network:
+                    sb = orig(*a, **kw)
+                    print(f"[no network] {no_net}", flush=True)
+                    return sb
             return orig(*a, **kw)
 
-        m.Sandbox.create = staticmethod(guarded)  # type: ignore[assignment]
+        def guarded(*a, **kw):
+            return _create(orig, False, a, kw)
 
-        # Same soft-boundary tier as the gpu/timeout clamp above: repl cells
-        # can retag freely EXCEPT the two owner keys, so a kernel cell can't
-        # plant a divergent-owner shape (listed via one key, disowned via
-        # the other) that every reconcile returns but no terminate touches.
-        # The real SDK's set_tags is REPLACE semantics (the request carries
-        # the complete tag list), so the guard re-merges the sandbox's
-        # CURRENT owner-key values on top of the sanitized dict — otherwise
-        # any retag omitting the owner key (hostile or a benign
-        # set_tags({"experiment": "r1"})) would erase the host stamp and
-        # orphan the sandbox from every list_owned union. A get_tags failure
-        # propagates: refusing the retag beats silently erasing ownership.
-        orig_set = m.Sandbox.set_tags
+        def hydrate(env_path, *a, **kw):
+
+
+
+            try:
+                root = os.path.realpath(envs_dir) + os.sep
+                bundled = bool(envs_dir) and os.path.realpath(
+                    str(env_path)).startswith(root)
+            except Exception:
+                bundled = False
+            return _create(orig, bundled, a, kw,
+                           "modal.Sandbox.create.hydrate")
+
+        guarded.hydrate = hydrate
+        m.Sandbox.create = staticmethod(guarded)
+
+
+
+        def _shared(raw, what):
+            def static(*a, **kw):
+                return _create(raw, False, a, kw, what)
+            return staticmethod(static)
+
+        if hasattr(m.Sandbox, "_create"):
+            m.Sandbox._create = _shared(m.Sandbox._create,
+                                        "modal.Sandbox._create")
+        if no_net and hasattr(m.Sandbox, "_experimental_create"):
+            def _refuse_v2(*_a, **_kw):
+                raise ByocError(
+                    "invalid_request",
+                    f"{no_net} modal.Sandbox._experimental_create is refused "
+                    "from a cell here: its sandboxes cannot carry the owner "
+                    "tags this kernel stamps. Use modal.Sandbox.create.",
+                )
+
+            m.Sandbox._experimental_create = staticmethod(_refuse_v2)
+        set_policy = "_experimental_set_outbound_network_policy"
+        if no_net and hasattr(m.Sandbox, set_policy):
+            def _refuse_policy(*_a, **_kw):
+                raise ByocError(
+                    "invalid_request",
+                    f"{no_net} A sandbox's network policy cannot be changed "
+                    "from this kernel.",
+                )
+
+            setattr(m.Sandbox, set_policy, _refuse_policy)
+
+
+
+
+        if no_net:
+            def _forced(name, raw):
+                def define(self_, *a, **kw):
+                    _force_no_network(f"App.{name}", kw, True, ("i6pn",))
+                    out = raw.__get__(self_, type(self_))(*a, **kw)
+                    print(f"[no network] {no_net}", flush=True)
+                    return out
+                return define
+
+            for name in ("function", "cls"):
+                if hasattr(m.App, name):
+                    setattr(m.App, name, _forced(
+                        name, inspect.getattr_static(m.App, name)))
+            def _refuse_server(alias):
+                def refuse(*_a, **_kw):
+                    raise ByocError(
+                        "invalid_request",
+                        f"{no_net} App.{alias} cannot run without a network, "
+                        "so it is refused here. A Function with no network "
+                        "still works (App.function, App.cls); download what it "
+                        "needs at image-build time.",
+                    )
+                return refuse
+
+            for alias in ("server", "_experimental_server"):
+                if hasattr(m.App, alias):
+                    setattr(m.App, alias, _refuse_server(alias))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        raw_set = inspect.getattr_static(m.Sandbox, "set_tags")
 
         def guarded_set_tags(self_, tags, *a, **kw):
-            merged = _sanitize_repl_tags(tags)
+            merged = _sanitize_repl_tags(tags, self_id)
             if isinstance(merged, dict):
                 merged = dict(merged)
                 cur = self_.get_tags()
-                # Preserve EVERY identity key, not just the owner spellings:
-                # the enable-time reaper's hydrate exemption keys on the
-                # frame tag, so letting a benign replace-semantics retag
-                # drop it would un-protect a live hydrate from the next
-                # re-enable pass. Both prefix generations are preserved —
-                # pre-rename sandboxes carry claude-bioscience-* identity
-                # tags and must keep them for the reaper's dual-read.
+
+
+
+
+
+
+
                 for k, v in cur.items():
                     if (k in LEGACY_OWNER_TAGS
                             or k.startswith("claude-science-")
                             or k.startswith("claude-bioscience-")):
                         merged[k] = v
-            return orig_set(self_, merged, *a, **kw)
 
-        m.Sandbox.set_tags = guarded_set_tags  # type: ignore[assignment]
+
+
+
+
+
+
+
+
+
+                owned_here = OWNER_TAG in cur or any(
+                    cur.get(k) == self_id for k in LEGACY_OWNER_TAGS)
+                if not owned_here:
+                    merged.pop(OWNER_TAG, None)
+            bound = raw_set.__get__(self_, type(self_))
+            return bound(merged, *a, **kw)
+
+        m.Sandbox.set_tags = guarded_set_tags
 
     def _map_err(self, e: Exception) -> ByocError:
         s = repr(e)
@@ -699,10 +1083,38 @@ class ModalProvider:
             return ByocError(
                 "unauthorized",
                 "Modal rejected the token — it was revoked or the kernel outlived its TTL. "
-                "Re-open the compute_provider kernel (it re-reads ~/.modal.toml). "
+                "Re-open the compute_provider kernel (it re-resolves the stored credential). "
                 f"({raw})",
             )
-        if "RESOURCE_EXHAUSTED" in s or "quota" in s.lower() or "spend limit" in s.lower():
+        low = s.lower()
+
+
+
+
+
+        if "deployed apps" in low and "limit of" in low:
+            return ByocError(
+                "quota_exhausted",
+                "The Modal workspace is at its deployed-apps cap — no new app "
+                "can be created until existing ones are stopped. This is not a "
+                "GPU/spend limit and closing sandboxes does not free it. Surface "
+                "it to the user: stale apps are stopped from the Modal dashboard "
+                "(Apps) or `modal app stop` — the workspace is shared, so never "
+                "stop apps you didn't create. Meanwhile reuse the provider's "
+                "configured app (in a compute_provider cell: the preloaded `app`) "
+                f"rather than looking up fresh app names per task. ({raw})",
+            )
+        if ("RateLimit" in s or "TOO_MANY" in s
+                or "rate limit" in low or "too many layers" in low):
+            return ByocError(
+                "rate_limited",
+                "Modal rate-limited this request (token request rate, or a Volume "
+                "control-plane limit such as 'rate limit exceeded' / 'too many "
+                "layers' pending background compaction). Back off ~60s before "
+                "retrying — nothing needs closing or raising; stagger fan-out "
+                f"submissions and batch volume listings if you're looping. ({raw})",
+            )
+        if "RESOURCE_EXHAUSTED" in s or "quota" in low or "spend limit" in low:
             return ByocError(
                 "quota_exhausted",
                 "Modal workspace quota, concurrent-GPU limit, or spend limit reached. "
@@ -718,17 +1130,21 @@ class ModalProvider:
                 "dashboard, API, or platform). The sandbox is gone and "
                 f"outputs are unrecoverable. ({raw})",
             )
-        if "UNAVAILABLE" in s or "DEADLINE_EXCEEDED" in s:
+
+
+
+        if ("UNAVAILABLE" in s or "DEADLINE_EXCEEDED" in s
+                or s.startswith("ConnectionError(")):
             return ByocError(
                 "transient",
                 "Modal API was unreachable or timed out — usually transient. Retry in "
                 f"~30s; if it persists check https://status.modal.com. ({raw})",
             )
-        # Real Modal's NotFoundError has no custom __repr__, so the grpc
-        # status token "NOT_FOUND" is only in the repr when the error came
-        # straight from grpclib. Volume.from_name / .read_file raise
-        # modal.exception.NotFoundError / FileNotFoundError respectively —
-        # both caught by the class-name substring.
+
+
+
+
+
         if "NOT_FOUND" in s or "NotFound" in s:
             return ByocError(
                 "not_found",
@@ -752,12 +1168,6 @@ class ModalProvider:
                 "egress policy to Unrestricted in Settings → Compute → "
                 f"modal as a workaround. ({raw})",
             )
-        if "RateLimit" in s or "TOO_MANY" in s:
-            return ByocError(
-                "rate_limited",
-                "Modal rate-limited this token. Back off ~60s before retrying; "
-                f"stagger fan-out submissions if you're looping. ({raw})",
-            )
         return ByocError(
             "transient",
             f"Unexpected Modal SDK error — retry once; if it persists report the trace. ({raw})",
@@ -780,9 +1190,9 @@ class _ExecAdapter:
 
     def wait(self) -> int:
         rc = self._p.wait()
-        # Defensive: Modal v1.4.x types wait() -> int, but older/future SDKs
-        # may return None if the exit status couldn't be reaped. `or 0` would
-        # coerce that to success — map to 137 (128+SIGKILL) instead.
+
+
+
         return rc if rc is not None else 137
 
 

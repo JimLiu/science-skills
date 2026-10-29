@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-PREVIEW_CHARS = 200  # original: 200 chars + "..." (captures show len 203)
+PREVIEW_CHARS = 200
 
 SERVER_DOMAINS = {"biorxiv": "www.biorxiv.org", "medrxiv": "www.medrxiv.org"}
 
@@ -27,7 +27,7 @@ def _preview(abstract: object) -> str | None:
     return abstract
 
 
-# ------------------------------------------------------------ get_categories
+
 def categories_response(names) -> dict:
     return {
         "success": True,
@@ -39,7 +39,7 @@ def categories_response(names) -> dict:
     }
 
 
-# -------------------------------------------------------------- get_preprint
+
 def preprint_response(versions: list[dict], server: str) -> dict:
     """Original emitted a single version record. It used the FIRST (oldest)
     version; we use the latest (see README: deliberate behavior change) and
@@ -70,7 +70,7 @@ def preprint_response(versions: list[dict], server: str) -> dict:
             "server": rec.get("server"),
             "pdf_url": f"https://{domain}/content/{doi}v{version}.full.pdf",
             "web_url": f"https://{domain}/content/{doi}v{version}",
-            # additive: the fleet retrieves every version
+
             "n_versions": len(versions),
         },
         "error": None,
@@ -81,7 +81,7 @@ def preprint_error(message: str) -> dict:
     return {"success": False, "preprint": None, "error": message}
 
 
-# ------------------------------------- search_preprints / search_by_funder
+
 def preprint_summary(rec: dict) -> dict:
     return {
         "doi": rec.get("doi"),
@@ -102,8 +102,8 @@ def search_response(records: list[dict], cursor: int,
     (``/funder/…`` — 06-25 probe item 7): callers use ``count < limit`` to
     detect end-of-stream. Never ``0`` with a non-empty page."""
     results = [preprint_summary(r) for r in records]
-    # Upstream-silent route: surface None rather than a lying 0 when
-    # records exist but upstream reported no total.
+
+
     t = None if (not total and results) else total
     return {"success": True, "results": results, "cursor": cursor,
             "count": len(results), "total": t, "error": None}
@@ -114,7 +114,7 @@ def search_error(message: str, cursor: int) -> dict:
             "count": 0, "total": 0, "error": message}
 
 
-# --------------------------------------------- search_published_preprints
+
 _PUBLISHED_SUMMARY_KEYS = (
     "published_doi", "published_journal", "preprint_platform",
     "preprint_title", "preprint_category", "preprint_date", "published_date",
@@ -142,7 +142,7 @@ def published_response(records: list[dict], cursor: int, total: int | None,
             "count": len(results), "total": t, "error": None}
 
 
-# ------------------------------------------------------------- statistics
+
 def _int(value) -> int:
     return int(str(value))
 

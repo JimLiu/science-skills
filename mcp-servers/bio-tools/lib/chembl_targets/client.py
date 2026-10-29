@@ -23,13 +23,13 @@ from mcp_servers_common.ratelimit import retry_after_seconds
 
 DEFAULT_BASE_URL = "https://www.ebi.ac.uk/chembl/api/data"
 DEFAULT_PAGE_SIZE = 1000
-DEFAULT_MIN_INTERVAL_S = 0.5  # <= 2 requests/second on the shared EBI host
+DEFAULT_MIN_INTERVAL_S = 0.5
 DEFAULT_TIMEOUT_S = 60.0
 DEFAULT_MAX_RETRIES = 4
 USER_AGENT = "chembl-targets/0.1.0 (bio-tools wave 3B)"
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 
-# resource name -> key holding the record list in a paged response
+
 _ITEMS_KEYS = {
     "target": "targets",
     "target_component": "target_components",
@@ -72,14 +72,14 @@ class ChemblTargetsClient:
         self.backoff_s = backoff_s
         self.page_size = page_size
         self.timeout_s = timeout_s
-        self.raw_sink = raw_sink  # if a list, every successful response text is appended (benchmarking)
+        self.raw_sink = raw_sink
         self.request_count = 0
         self.bytes_downloaded = 0
         self._last_request_t = 0.0
         self._component_cache: dict[int, dict[str, Any]] = {}
         self._classification_cache: dict[int, dict[str, Any]] = {}
 
-    # ------------------------------------------------------------------ low-level
+
 
     def _throttle(self) -> None:
         wait = self.min_interval_s - (time.monotonic() - self._last_request_t)
@@ -99,7 +99,7 @@ class ChemblTargetsClient:
                 last_error = f"{type(exc).__name__}: {exc}"
                 if attempt == self.max_retries:
                     break
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(self.backoff_s * (2**attempt))
                 continue
             self.request_count += 1
@@ -112,7 +112,7 @@ class ChemblTargetsClient:
                     break
                 retry_after = resp.headers.get("Retry-After", "")
                 delay = retry_after_seconds(retry_after, self.backoff_s * (2**attempt))
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(delay)
                 continue
             if resp.status_code >= 400:
@@ -158,7 +158,7 @@ class ChemblTargetsClient:
             )
         return records, total
 
-    # ------------------------------------------------------------------ classification / components
+
 
     def classification(self, protein_class_id: int) -> dict[str, Any]:
         """Protein classification record (cached): {protein_class_id, pref_name, class_level, path}."""
@@ -203,7 +203,7 @@ class ChemblTargetsClient:
         }
         return sorted(ids)
 
-    # ------------------------------------------------------------------ targets by ChEMBL ID
+
 
     def fetch_target_raw(self, target_chembl_id: str) -> dict[str, Any]:
         """Raw single-target GET (no batching) -- used for spot checks."""
@@ -244,7 +244,7 @@ class ChemblTargetsClient:
                 )
         return build_target_record(raw, component_classifications)
 
-    # ------------------------------------------------------------------ reverse lookup and search
+
 
     def targets_for_accession(
         self, accession: str, include_classification: bool = False

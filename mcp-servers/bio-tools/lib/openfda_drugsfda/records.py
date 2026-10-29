@@ -29,8 +29,8 @@ from typing import Any, Optional
 _DATE_RE = re.compile(r"^\d{8}$")
 _WS_RE = re.compile(r"\s+")
 
-#: openfda fields surfaced on the normalized record (all list-valued
-#: upstream; sorted for determinism).
+
+
 OPENFDA_FIELDS = (
     "generic_name",
     "brand_name",

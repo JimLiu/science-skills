@@ -14,7 +14,7 @@ from requests.adapters import HTTPAdapter
 
 DEFAULT_BASE_URL = "https://www.ebi.ac.uk/ols4/api"
 DEFAULT_TIMEOUT = 60.0
-# Politeness: <= 2 requests/second against www.ebi.ac.uk shared host.
+
 DEFAULT_MIN_INTERVAL_S = 0.5
 DEFAULT_MAX_RETRIES = 5
 USER_AGENT = "ols-terms/0.1.0 (bio-tools; python-requests)"
@@ -72,8 +72,8 @@ class OLSClient:
             self.session = session
         else:
             self.session = requests.Session()
-            # CappedRetry not Retry: urllib3 honours Retry-After with no
-            # ceiling (review on #2875 — same class as the hand-rolled loops).
+
+
             retry = CappedRetry(
                 total=max_retries,
                 connect=max_retries,

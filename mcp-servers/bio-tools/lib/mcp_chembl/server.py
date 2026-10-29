@@ -17,20 +17,53 @@ from mcp_servers_common.gate import apply_gate_tier1
 from . import marshal
 
 DEFAULT_LIMIT = 20
-# Hard ceiling on SMILES similarity/substructure page walks (review
-# 3387178880): generic scaffolds match 30k+ molecules; cap >> the 1000
-# request limit so ranking is meaningful, with walk_truncated disclosure
-# when the upstream match set exceeds it.
+
+
+
+
 SEARCH_WALK_CAP = 10_000
 
 
 def _limit(args: dict, cap: int = 1000) -> int:
-    # args.get(..., default) not `or` — `0 or 20 == 20` would silently coerce
-    # limit=0 (review 3377922603); schema minimum is 1, clamp mirrors it.
+
+
     return max(1, min(cap, int(args.get("limit", DEFAULT_LIMIT))))
 
 
-# One client per process; fleet clients handle pacing/retries internally.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def _usable(v: object) -> bool:
+    """True when a criterion value actually filters: a non-blank string, or
+    any non-None non-string (numbers are never blank)."""
+    if v is None:
+        return False
+    if isinstance(v, str):
+        return bool(v.strip())
+    return True
+
+
+def _any_blank(args: dict, keys: tuple[str, ...]) -> bool:
+    """True when at least one criterion in `keys` is present but blank."""
+    return any(
+        isinstance(args.get(k), str) and not str(args[k]).strip()
+        for k in keys
+    )
+
+
+
 @lru_cache(maxsize=1)
 def _drugs():
     from chembl_drug_search import ChemblDrugSearchClient
@@ -65,7 +98,7 @@ def _single_page(client, resource: str, params: dict, limit: int) -> tuple[list,
     return payload.get(collection_key) or [], meta.get("total_count")
 
 
-# ── compound_search ──────────────────────────────────────────────────────────
+
 
 def compound_search(args: dict) -> str:
     from chembl_drug_search.client import MoleculeNotFoundError
@@ -74,7 +107,11 @@ def compound_search(args: dict) -> str:
     max_phase = args.get("max_phase")
     client = _drugs()
 
-    if args.get("chembl_id"):
+
+    if not any(_usable(args.get(k)) for k in ("chembl_id", "smiles", "name")):
+        return marshal.compact_json(marshal.compound_search_response([], 0))
+
+    if _usable(args.get("chembl_id")):
         try:
             records = client.get_molecules([args["chembl_id"]])
         except MoleculeNotFoundError:
@@ -86,46 +123,46 @@ def compound_search(args: dict) -> str:
         return marshal.compact_json(
             marshal.compound_search_response(records[:limit], len(records)))
 
-    if args.get("smiles"):
+    if _usable(args.get("smiles")):
         threshold = args.get("similarity_threshold")
-        # Through the fleet's dedicated searchers, NOT a raw bounded
-        # paginate: these routes reject order_by and their native order is
-        # non-contractual, so truncating DURING the walk returned an
-        # arbitrary subset instead of the top-N (review 3379150543). The
-        # walk itself is hard-ceilinged (review 3387178880: generic
-        # scaffolds match 30k+ molecules — never unbounded-by-default on
-        # user-shaped SMILES); cap >> limit, ranking is deterministic
-        # within the capped set, and truncation is DISCLOSED below.
+
+
+
+
+
+
+
+
         if threshold is not None:
             records, total = client.similarity_search(
                 args["smiles"], int(threshold), max_records=SEARCH_WALK_CAP)
         else:
             records, total = client.substructure_search(
                 args["smiles"], max_records=SEARCH_WALK_CAP)
-            # substructure_search only ID-sorts the full walk; sort the
-            # capped set too so presentation stays deterministic.
+
+
             records = sorted(
                 records, key=lambda r: r.get("molecule_chembl_id") or "")
         walk_truncated = total is not None and total > len(records)
         if max_phase is not None:
-            # Client-side like the name branch: the searchers own their
-            # query params, and filtered totals must count what the filter
-            # kept, not the unfiltered upstream total.
+
+
+
             records = [m for m in records
                        if m.get("max_phase") is not None
                        and float(m["max_phase"]) == float(max_phase)]
         resp = marshal.compound_search_response(records[:limit], len(records))
         if walk_truncated:
-            # Additive disclosure: ranking/filtering was scoped to the
-            # first SEARCH_WALK_CAP records walked, not the full upstream
-            # match set (whose size is upstream_total).
+
+
+
             resp["walk_truncated"] = True
             resp["upstream_total"] = total
         return marshal.compact_json(resp)
 
-    # Name search: synonym substring match (the original's formulation —
-    # reproduces its result sets, e.g. "aspirin" -> 8 molecules), with a
-    # pref_name fallback for molecules that have no synonym rows.
+
+
+
     params = {"molecule_synonyms__molecule_synonym__icontains": args["name"]}
     if max_phase is not None:
         params["max_phase"] = max_phase
@@ -140,15 +177,27 @@ def compound_search(args: dict) -> str:
     return marshal.compact_json(marshal.compound_search_response(records, total))
 
 
-# ── drug_search ──────────────────────────────────────────────────────────────
+
 
 def drug_search(args: dict) -> str:
     limit = _limit(args)
     client = _drugs()
-    # Post-filters need the full molecule join; without them, joining only
-    # the first page of parents avoids an unbounded N+1 fan-out on broad
-    # indications ("cancer": thousands of parents → 80-150+ serially
-    # throttled EBI calls → -32001 timeout). Review 3377922588.
+    indication = args.get("indication")
+    if not _usable(indication):
+
+
+        return marshal.compact_json(marshal.drug_search_response(
+            [], 0,
+            indication_query={
+                "term": indication if isinstance(indication, str) else "",
+                "match_field": "efo",
+                "only_approved": bool(args.get("only_approved")),
+            },
+            total_indication_rows=0))
+
+
+
+
     post_filtered = bool(
         args.get("molecule_chembl_id") or args.get("drug_name")
         or args.get("max_phase") is not None)
@@ -171,11 +220,11 @@ def drug_search(args: dict) -> str:
 
     total = len(drugs) if post_filtered else res["total_parents"]
     page = drugs[:limit]
-    # Join by chembl_id, NOT zip-by-position (review 3387178867 / bench
-    # 3389709159): with missing_ok a dropped molecule record would shift
-    # every subsequent zip pairing — the misalignment trap. A referential
-    # gap degrades that one drug to molecule={} (same tolerance the
-    # client-side join already has at search_drugs_by_indication).
+
+
+
+
+
     mol_by_id = {
         m["molecule_chembl_id"]: m
         for m in (client.get_molecules(
@@ -190,31 +239,35 @@ def drug_search(args: dict) -> str:
         total_indication_rows=res["total_indication_rows"]))
 
 
-# ── get_admet ────────────────────────────────────────────────────────────────
+
 
 def get_admet(args: dict) -> str:
     mol_id = args["molecule_chembl_id"]
-    # NOTE (review 3387178867 adjudication): this is the chembl_bioactivity
-    # client, whose get_molecules is tolerant (returns found records only,
-    # no MoleculeNotFoundError — that raise belongs to the chembl_drug_search
-    # client used elsewhere). The `records[0] if records else None` fallback
-    # below is therefore LIVE, not dead: an unknown id yields the marshal's
-    # found:false arm.
+
+
+
+
+
+
     records = _bio().get_molecules([mol_id])
     return marshal.compact_json(
         marshal.admet_response(records[0] if records else None, mol_id))
 
 
-# ── get_bioactivity ──────────────────────────────────────────────────────────
+
+
+_BIOACTIVITY_STR_CRITERIA = ("molecule_chembl_id", "target_chembl_id",
+                             "activity_type", "unit")
+
 
 def get_bioactivity(args: dict) -> str:
     limit = _limit(args)
     params: dict = {}
-    if args.get("molecule_chembl_id"):
+    if _usable(args.get("molecule_chembl_id")):
         params["molecule_chembl_id"] = args["molecule_chembl_id"]
-    if args.get("target_chembl_id"):
+    if _usable(args.get("target_chembl_id")):
         params["target_chembl_id"] = args["target_chembl_id"]
-    if args.get("activity_type"):
+    if _usable(args.get("activity_type")):
         params["standard_type"] = args["activity_type"]
     if args.get("min_pchembl") is not None:
         params["pchembl_value__gte"] = args["min_pchembl"]
@@ -222,50 +275,70 @@ def get_bioactivity(args: dict) -> str:
         params["standard_value__gte"] = args["min_value"]
     if args.get("max_value") is not None:
         params["standard_value__lte"] = args["max_value"]
-    if args.get("unit"):
+    if _usable(args.get("unit")):
         params["standard_units"] = args["unit"]
+    if not params and _any_blank(args, _BIOACTIVITY_STR_CRITERIA):
+
+
+        return marshal.compact_json(marshal.bioactivity_response([], 0))
     activities, total = _single_page(_bio(), "activity", params, limit)
     return marshal.compact_json(marshal.bioactivity_response(activities, total))
 
 
-# ── get_mechanism ────────────────────────────────────────────────────────────
+
+
+_MECHANISM_CRITERIA = ("molecule_chembl_id", "target_chembl_id",
+                       "action_type")
+
 
 def get_mechanism(args: dict) -> str:
     limit = _limit(args)
     params: dict = {}
-    if args.get("target_chembl_id"):
+    if _usable(args.get("target_chembl_id")):
         params["target_chembl_id"] = args["target_chembl_id"]
-    if args.get("action_type"):
+    if _usable(args.get("action_type")):
         params["action_type"] = args["action_type"]
     mol_id = args.get("molecule_chembl_id")
-    if mol_id:
+    if _usable(mol_id):
         params["molecule_chembl_id"] = mol_id
+    if not params and _any_blank(args, _MECHANISM_CRITERIA):
+
+
+        return marshal.compact_json(marshal.mechanism_response([], 0))
     mechanisms, total = _single_page(_bio(), "mechanism", params, limit)
-    if not mechanisms and mol_id:
-        # Mechanisms may be stored under the salt form; retry matching the
-        # parent so parent compound IDs work (as the original documented).
+    if not mechanisms and _usable(mol_id):
+
+
         params.pop("molecule_chembl_id")
         params["parent_molecule_chembl_id"] = mol_id
         mechanisms, total = _single_page(_bio(), "mechanism", params, limit)
     return marshal.compact_json(marshal.mechanism_response(mechanisms, total))
 
 
-# ── target_search ────────────────────────────────────────────────────────────
+
+
+_TARGET_CRITERIA = ("target_chembl_id", "gene_symbol", "target_name",
+                    "organism", "target_type")
+
 
 def target_search(args: dict) -> str:
     limit = _limit(args)
     params: dict = {}
-    if args.get("target_chembl_id"):
+    if _usable(args.get("target_chembl_id")):
         params["target_chembl_id"] = args["target_chembl_id"]
-    if args.get("gene_symbol"):
+    if _usable(args.get("gene_symbol")):
         params["target_components__target_component_synonyms__"
                "component_synonym__iexact"] = args["gene_symbol"]
-    if args.get("target_name"):
+    if _usable(args.get("target_name")):
         params["pref_name__icontains"] = args["target_name"]
-    if args.get("organism"):
+    if _usable(args.get("organism")):
         params["organism__icontains"] = args["organism"]
-    if args.get("target_type"):
+    if _usable(args.get("target_type")):
         params["target_type"] = args["target_type"]
+    if not params and _any_blank(args, _TARGET_CRITERIA):
+
+
+        return marshal.compact_json(marshal.target_search_response([], 0))
     records, total = _targets().paginate("target", params, max_records=limit)
     return marshal.compact_json(marshal.target_search_response(records, total))
 
@@ -285,9 +358,9 @@ def build_server() -> Tier1Server:
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py): enforce
-    # mcp_bio/deferred.json exactly like the aggregate. Serve-time only —
-    # build_server() stays pristine for parity tests and the aggregate.
+
+
+
     t1 = build_server()
     apply_gate_tier1(t1)
     t1.run()

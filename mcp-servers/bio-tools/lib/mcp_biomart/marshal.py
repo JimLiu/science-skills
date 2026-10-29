@@ -17,7 +17,7 @@ from typing import Mapping, Sequence
 
 import pandas as pd
 
-# Verbatim from the original biomart_mcp.py (list_common_attributes).
+
 COMMON_ATTRIBUTES = [
     "ensembl_gene_id",
     "external_gene_name",
@@ -39,10 +39,10 @@ COMMON_ATTRIBUTES = [
     "transcript_length",
 ]
 
-# Substrings the original filtered out of list_all_attributes.
+
 ALL_ATTRIBUTES_EXCLUDES = ("_homolog_", "dbass", "affy_", "agilent_")
 
-# pybiomart Mart.RESULT_COLNAMES (the ?type=datasets TSV has 9 columns).
+
 DATASET_COLNAMES = ["type", "name", "display_name", "unknown", "unknown2",
                     "unknown3", "unknown4", "virtual_schema", "unknown5"]
 
@@ -53,7 +53,7 @@ def csv_text(df: pd.DataFrame) -> str:
     return df.to_csv(index=False).replace("\r", "")
 
 
-# ----------------------------------------------------------------- registry
+
 def marts_df(registry_xml: str) -> pd.DataFrame:
     """pybiomart ``Server.list_marts()``: MartURLLocation nodes in document
     order, columns name/display_name."""
@@ -63,7 +63,7 @@ def marts_df(registry_xml: str) -> pd.DataFrame:
     return pd.DataFrame.from_records(rows, columns=["name", "display_name"])
 
 
-# ----------------------------------------------------------------- datasets
+
 def datasets_df(datasets_tsv: str) -> pd.DataFrame:
     """pybiomart ``Mart.list_datasets()``: the raw TSV read with the fixed
     9-column schema, projected to name/display_name, server row order kept."""
@@ -72,7 +72,7 @@ def datasets_df(datasets_tsv: str) -> pd.DataFrame:
     return df[["name", "display_name"]]
 
 
-# ------------------------------------------------------------ configuration
+
 def parse_configuration(config_xml: str) -> tuple[dict, dict]:
     """pybiomart ``Dataset._fetch_configuration()``.
 
@@ -126,7 +126,7 @@ def filters_csv(filters: Mapping[str, str]) -> str:
     return csv_text(df)
 
 
-# ------------------------------------------------------------------ queries
+
 def build_query_xml(dataset: str, attributes: Sequence[str],
                     filters: Mapping[str, object] | None,
                     filter_types: Mapping[str, str], *,
@@ -188,8 +188,15 @@ def data_csv(tsv_body: str) -> str:
 
 def translation_dict(rows: Sequence[Sequence[str]]) -> dict[str, str]:
     """Original: ``dict(zip(df.iloc[:, 0], df.iloc[:, 1]))`` — duplicate
-    source ids keep the last row."""
-    return {row[0]: row[1] for row in rows}
+    source ids keep the last row.
+
+    Rows whose SOURCE column is blank are dropped (census fast-follow,
+    #4141): the full two-column scan near-certainly contains them (e.g.
+    hgnc_symbol is empty for thousands of ENSG ids), and the '' key they
+    created answered a blank translation target with an ARBITRARY dataset
+    value presented as success. A blank key is unreachable by any
+    legitimate target; dropping it changes nothing else."""
+    return {row[0]: row[1] for row in rows if row[0].strip()}
 
 
 def batch_translate_response(mapping: Mapping[str, str],

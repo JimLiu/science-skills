@@ -19,8 +19,8 @@ import json
 
 PROGNOSTICS_PREFIX = "Cancer prognostics - "
 
-# Stable per-gene summary subset, grouped. Every name is a literal key of
-# the per-gene JSON (verified against HPA release 25.1, 2026-06-08).
+
+
 SUMMARY_FIELDS: dict[str, tuple[str, ...]] = {
     "identity": (
         "Gene", "Gene synonym", "Ensembl", "Gene description", "Uniprot",

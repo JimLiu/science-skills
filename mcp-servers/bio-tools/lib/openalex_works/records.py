@@ -42,7 +42,7 @@ def _short_id(url_or_id: str | None) -> str | None:
 
 
 def _url_id(m: "re.Match[str]", want: str) -> str | None:
-    """Entity-typed URL branch (finding 3406323886): _OPENALEX_URL matches
+    """Entity-typed URL branch: _OPENALEX_URL matches
     all seven entity letters, but each normalizer must only accept its own
     type — a concept URL (C…) passed as a source would otherwise return a
     confident api_total=0 instead of the ValueError the bare id raises."""
@@ -51,8 +51,8 @@ def _url_id(m: "re.Match[str]", want: str) -> str | None:
 
 
 def _checked_doi(doi: str, original: str) -> str:
-    """OpenAlex splits filter values on ',' and '|' with no escaping
-    (finding 3406323886): a comma becomes a bogus second filter (errors a
+    """OpenAlex splits filter values on ',' and '|' with no escaping:
+    a comma becomes a bogus second filter (errors a
     valid DOI) and a pipe becomes an OR that _resolve_doi_work silently
     collapses to the most-cited claimant — reject both outright."""
     if "," in doi or "|" in doi:
@@ -81,9 +81,9 @@ def normalize_work_id(work_id: str) -> str:
     m = _DOI_URL.match(wid)
     if m:
         return f"doi:{_checked_doi(m.group('doi'), work_id)}"
-    # doi:-prefixed and bare DOIs converge on the ONE grammar check
-    # (registrant prefix "10." + suffix separator) — same-rule-both-branches
-    # (review 3387781825). DOI values only ever feed the filter query route.
+
+
+
     cand = wid[4:].strip() if wid.lower().startswith("doi:") else wid
     if cand.startswith("10.") and "/" in cand:
         return f"doi:{_checked_doi(cand, work_id)}"
@@ -107,9 +107,9 @@ def normalize_author_id(author_id: str) -> str:
             f"is not an A (author) entity")
     if re.fullmatch(r"[Aa]\d+", aid):
         return aid.upper()
-    # ORCID — bare, orcid.org URL, or orcid:-prefixed all converge on the
-    # ONE grammar check below: the normalized value enters a request path,
-    # so every branch must validate (review 3387781825).
+
+
+
     cand = aid
     if cand.lower().startswith("orcid:"):
         cand = cand[6:].strip()
@@ -134,9 +134,9 @@ def normalize_source_id(source_id: str) -> str:
             f"is not an S (source) entity")
     if re.fullmatch(r"[Ss]\d+", sid):
         return sid.upper()
-    # ISSN — bare or issn:-prefixed converge on the ONE grammar check: the
-    # normalized value enters a request path, so every branch must validate
-    # (review 3387781825).
+
+
+
     cand = sid
     if cand.lower().startswith("issn:"):
         cand = cand[5:].strip()
@@ -160,11 +160,11 @@ def _lean_authorship(a: dict) -> dict:
     }
 
 
-# Licenses under which plaintext-abstract reconstruction is permitted in a
-# commercial product (counsel review, 2026-06-12). Deliberately excludes
-# -nc (non-commercial), -nd (reconstruction is arguably a derivative), and
-# null/unknown (fail closed). Vocabulary live-verified against
-# /works?group_by=primary_location.license on 2026-06-12.
+
+
+
+
+
 OPEN_ABSTRACT_LICENSES = frozenset({"cc-by", "cc-by-sa", "cc0", "public-domain"})
 
 
@@ -227,17 +227,17 @@ def lean_work(w: dict, with_abstract: bool = True) -> dict:
                 w.get("abstract_inverted_index"))
             rec["abstract_license"] = lic
         else:
-            # Legal gate (counsel review, 2026-06-12): OpenAlex ships
-            # abstracts as inverted indexes because publisher agreements bar
-            # redistributing abstract text; reconstructing plaintext defeats
-            # that. Reconstruct ONLY for works whose own license field is
-            # verified-open; otherwise link out. Null/unknown license fails
-            # CLOSED.
+
+
+
+
+
+
             rec["abstract"] = None
-            # abstract_license is emitted in BOTH branches (finding
-            # 3406476454): the mcp_literature docstring contract says gated
-            # records carry the declared license (null when undeclared),
-            # not just the free-text policy note.
+
+
+
+
             rec["abstract_license"] = lic
             rec["abstract_policy"] = (
                 "omitted: work license is "

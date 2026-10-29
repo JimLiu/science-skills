@@ -15,8 +15,8 @@ from .records import summarize
 
 ENSG_RE = re.compile(r"^ENSG\d{11}$")
 
-# Default search columns: identity + subcellular (codes are the cryptic
-# search_download column codes; the literal list is frozen — see README).
+
+
 DEFAULT_SEARCH_COLUMNS = "g,gs,eg,gd,up,chr,chrp,scl"
 RESOLVE_COLUMNS = "g,gs,eg"
 
@@ -43,12 +43,12 @@ class ProteinAtlas:
     def __init__(self, client: HpaClient | None = None):
         self.client = client or HpaClient()
 
-    # -- search ------------------------------------------------------------
+
     def search(self, query: str, columns: str = DEFAULT_SEARCH_COLUMNS) -> list[dict]:
         """Column-selected bulk search over HPA (search_download.php)."""
         return self.client.search_download(query, columns)
 
-    # -- symbol resolution ---------------------------------------------------
+
     def resolve_symbol(self, symbol: str) -> str:
         """Resolve a gene symbol (or synonym) to its Ensembl gene ID."""
         rows = self.client.search_download(symbol, RESOLVE_COLUMNS)
@@ -66,7 +66,7 @@ class ProteinAtlas:
                 symbol, [(r.get("Gene"), r["Ensembl"]) for r in exact])
         return ensgs[0]
 
-    # -- per-gene ------------------------------------------------------------
+
     def get_gene(self, gene: str, full: bool = False) -> dict:
         """Per-gene HPA record for an Ensembl gene ID or gene symbol.
 

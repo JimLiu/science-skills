@@ -92,7 +92,7 @@ def parse_complex(raw: dict) -> dict:
             go_annotations.append(
                 {
                     "go_id": x.get("identifier"),
-                    "aspect": x.get("qualifier"),       # molecular function / biological process / cellular component
+                    "aspect": x.get("qualifier"),
                     "term": x.get("description"),
                 }
             )

@@ -614,7 +614,7 @@
         <div class="progress" id="progress"></div>
       </div>
 
-      <!-- View tabs (only shown when benchmark data exists) -->
+      
       <div class="view-tabs" id="view-tabs" style="display: none">
         <button class="view-tab active" onclick="switchView('outputs')">
           Outputs
@@ -624,10 +624,10 @@
         </button>
       </div>
 
-      <!-- Outputs panel (qualitative review) -->
+      
       <div class="view-panel active" id="panel-outputs">
         <div class="main">
-          <!-- Prompt -->
+          
           <div class="section">
             <div class="section-header">
               Prompt
@@ -642,7 +642,7 @@
             </div>
           </div>
 
-          <!-- Outputs -->
+          
           <div class="section">
             <div class="section-header">Output</div>
             <div class="section-body" id="outputs-body">
@@ -650,7 +650,7 @@
             </div>
           </div>
 
-          <!-- Previous Output (collapsible) -->
+          
           <div class="section" id="prev-outputs-section" style="display: none">
             <div class="section-header">
               <div class="grades-toggle" onclick="togglePrevOutputs()">
@@ -661,7 +661,7 @@
             <div class="grades-content" id="prev-outputs-content"></div>
           </div>
 
-          <!-- Grades (collapsible) -->
+          
           <div class="section" id="grades-section" style="display: none">
             <div class="section-header">
               <div class="grades-toggle" onclick="toggleGrades()">
@@ -672,7 +672,7 @@
             <div class="grades-content" id="grades-content"></div>
           </div>
 
-          <!-- Feedback -->
+          
           <div class="section">
             <div class="section-header">Your Feedback</div>
             <div class="section-body">
@@ -706,9 +706,9 @@
           </button>
         </div>
       </div>
-      <!-- end panel-outputs -->
+      
 
-      <!-- Benchmark panel (quantitative stats) -->
+      
       <div class="view-panel" id="panel-benchmark">
         <div class="benchmark-view" id="benchmark-content">
           <div class="benchmark-empty">
@@ -719,7 +719,7 @@
       </div>
     </div>
 
-    <!-- Done overlay -->
+    
     <div class="done-overlay" id="done-overlay">
       <div class="done-card">
         <h2>Review Complete</h2>
@@ -733,7 +733,7 @@
       </div>
     </div>
 
-    <!-- Toast -->
+    
     <div class="toast" id="toast"></div>
 
     <script>
@@ -929,10 +929,13 @@
       }
 
       // ---- XLSX rendering via SheetJS ----
+      // The workbook is an eval output and is not trusted, so nothing from it
+      // reaches innerHTML: SheetJS only parses (cellHTML:false), and the table
+      // is built with DOM APIs from the formatted cell text.
       function renderXlsx(container, b64Data) {
         try {
           const raw = Uint8Array.from(atob(b64Data), (c) => c.charCodeAt(0));
-          const wb = XLSX.read(raw, { type: "array" });
+          const wb = XLSX.read(raw, { type: "array", cellHTML: false });
 
           for (let i = 0; i < wb.SheetNames.length; i++) {
             const sheetName = wb.SheetNames[i];
@@ -946,9 +949,25 @@
               container.appendChild(sheetLabel);
             }
 
-            const htmlStr = XLSX.utils.sheet_to_html(ws, { editable: false });
+            const rows = XLSX.utils.sheet_to_json(ws, {
+              header: 1,
+              raw: false,
+              defval: "",
+            });
+            const table = document.createElement("table");
+            const tbody = document.createElement("tbody");
+            for (const row of rows) {
+              const tr = document.createElement("tr");
+              for (const value of row) {
+                const td = document.createElement("td");
+                td.textContent = value == null ? "" : String(value);
+                tr.appendChild(td);
+              }
+              tbody.appendChild(tr);
+            }
+            table.appendChild(tbody);
             const wrapper = document.createElement("div");
-            wrapper.innerHTML = htmlStr;
+            wrapper.appendChild(table);
             container.appendChild(wrapper);
           }
         } catch (err) {
@@ -997,11 +1016,11 @@
           "</span>";
         html +=
           "<span>" +
-          (summary.passed || 0) +
+          escapeHtml(summary.passed || 0) +
           " passed, " +
-          (summary.failed || 0) +
+          escapeHtml(summary.failed || 0) +
           " failed of " +
-          (summary.total || 0) +
+          escapeHtml(summary.total || 0) +
           "</span>";
         html += "</div>";
 
@@ -1146,7 +1165,8 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reviews, status: "in_progress" }),
         })
-          .then(() => {
+          .then((r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
             document.getElementById("feedback-status").textContent = "Saved";
           })
           .catch(() => {
@@ -1189,11 +1209,12 @@
           headers: { "Content-Type": "application/json" },
           body: payload,
         })
-          .then(() => {
+          .then((r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
             document.getElementById("done-overlay").classList.add("visible");
           })
           .catch(() => {
-            // Server not available (static mode) — download as file
+            // Server not available (static mode) or refused the save — download as file
             const blob = new Blob([payload], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -1245,10 +1266,16 @@
         return "#";
       }
 
+      // Escapes for element content AND quoted attributes; every grading- and
+      // benchmark-derived value that reaches innerHTML goes through here (the
+      // spreadsheet preview above is built with DOM APIs and never uses it).
       function escapeHtml(text) {
-        const div = document.createElement("div");
-        div.textContent = text;
-        return div.innerHTML;
+        return String(text == null ? "" : text)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
       }
 
       // ---- View switching ----
@@ -1288,11 +1315,14 @@
         if (metadata.skill_name)
           html +=
             "<strong>" + escapeHtml(metadata.skill_name) + "</strong> &mdash; ";
-        if (metadata.timestamp) html += metadata.timestamp + " &mdash; ";
+        if (metadata.timestamp)
+          html += escapeHtml(metadata.timestamp) + " &mdash; ";
         if (metadata.evals_run)
-          html += "Evals: " + metadata.evals_run.join(", ") + " &mdash; ";
+          html +=
+            "Evals: " + escapeHtml(metadata.evals_run.join(", ")) + " &mdash; ";
         html +=
-          (metadata.runs_per_configuration || "?") + " runs per configuration";
+          escapeHtml(metadata.runs_per_configuration || "?") +
+          " runs per configuration";
         html += "</p>";
 
         // Summary table
@@ -1345,7 +1375,7 @@
           '<td class="' +
           deltaClass(delta.pass_rate) +
           '">' +
-          (delta.pass_rate || "—") +
+          escapeHtml(delta.pass_rate || "—") +
           "</td></tr>";
 
         // Time (only show row if data exists)
@@ -1357,7 +1387,7 @@
             '<td class="' +
             deltaClass(delta.time_seconds) +
             '">' +
-            (delta.time_seconds ? delta.time_seconds + "s" : "—") +
+            escapeHtml(delta.time_seconds ? delta.time_seconds + "s" : "—") +
             "</td></tr>";
         }
 
@@ -1370,7 +1400,7 @@
             '<td class="' +
             deltaClass(delta.tokens) +
             '">' +
-            (delta.tokens || "—") +
+            escapeHtml(delta.tokens || "—") +
             "</td></tr>";
         }
 
@@ -1435,24 +1465,25 @@
                       ? "benchmark-delta-negative"
                       : "";
                 html += '<tr class="' + rowClass + '">';
-                html += "<td>" + configLabel + "</td>";
-                html += "<td>" + run.run_number + "</td>";
+                html += "<td>" + escapeHtml(configLabel) + "</td>";
+                html += "<td>" + escapeHtml(run.run_number) + "</td>";
                 html +=
                   '<td class="' +
                   prClass +
                   '">' +
-                  ((r.pass_rate || 0) * 100).toFixed(0) +
+                  (Number(r.pass_rate || 0) * 100).toFixed(0) +
                   "% (" +
-                  (r.passed || 0) +
+                  escapeHtml(r.passed || 0) +
                   "/" +
-                  (r.total || 0) +
+                  escapeHtml(r.total || 0) +
                   ")</td>";
                 if (hasTime)
                   html +=
                     "<td>" +
                     (r.time_seconds != null ? r.time_seconds.toFixed(1) : "—") +
                     "</td>";
-                if (hasErrors) html += "<td>" + (r.errors || 0) + "</td>";
+                if (hasErrors)
+                  html += "<td>" + escapeHtml(r.errors || 0) + "</td>";
                 html += "</tr>";
               }
 
@@ -1468,7 +1499,7 @@
                     ? "benchmark-delta-negative"
                     : "";
               html += '<tr class="benchmark-row-avg ' + rowClass + '">';
-              html += "<td>" + configLabel + "</td>";
+              html += "<td>" + escapeHtml(configLabel) + "</td>";
               html += "<td>Avg</td>";
               html +=
                 '<td class="' +
@@ -1551,7 +1582,7 @@
                         '<span class="' +
                         cls +
                         '" title="Run ' +
-                        run.run_number +
+                        escapeHtml(run.run_number) +
                         ": " +
                         escapeHtml(exp.evidence || "") +
                         '">' +

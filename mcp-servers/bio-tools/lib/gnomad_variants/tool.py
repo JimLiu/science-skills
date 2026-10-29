@@ -7,7 +7,7 @@ from .records import (build_clinvar_row, build_constraint_record, build_mito_row
                       build_short_variant_row, build_sv_row, build_variant_record,
                       sort_rows)
 
-# Dataset enum frozen to the 14 values exposed by the tooluniverse/gnomad MCP.
+
 DATASETS = frozenset({
     "gnomad_r4", "gnomad_r4_non_ukb",
     "gnomad_r3", "gnomad_r3_controls_and_biobanks", "gnomad_r3_non_cancer",
@@ -16,9 +16,9 @@ DATASETS = frozenset({
     "gnomad_r2_1_non_neuro", "gnomad_r2_1_non_topmed", "exac",
 })
 SV_DATASETS = frozenset({"gnomad_sv_r4", "gnomad_sv_r2_1"})
-# The MCP defaults to gnomad_r3; mirrored here for surface fidelity. Callers
-# (and the pinned battery) should always pass the dataset explicitly -- see
-# the README and the benchmark for what unpinned defaults cost.
+
+
+
 DEFAULT_DATASET = "gnomad_r3"
 DEFAULT_SV_DATASET = "gnomad_sv_r4"
 MAX_REGION_BP = 1_000_000
@@ -42,7 +42,7 @@ class GnomadVariants:
     def __init__(self, client: GnomadClient | None = None):
         self.client = client or GnomadClient()
 
-    # 1. variant lookup -----------------------------------------------------
+
     def get_variant(self, variant_id: str, dataset: str = DEFAULT_DATASET) -> dict | None:
         _check_dataset(dataset)
         try:
@@ -52,13 +52,13 @@ class GnomadVariants:
         v = data.get("variant")
         return build_variant_record(v, dataset) if v else None
 
-    # 2. variant search ------------------------------------------------------
+
     def search_variants(self, query: str, dataset: str = DEFAULT_DATASET) -> list[str]:
         _check_dataset(dataset)
         data = self.client.query(Q.VARIANT_SEARCH, {"query": query, "dataset": dataset})
         return sorted(r["variant_id"] for r in data.get("variant_search") or [])
 
-    # 3. gene variants -------------------------------------------------------
+
     def gene_variants(self, gene_symbol: str | None = None, gene_id: str | None = None,
                       dataset: str = DEFAULT_DATASET) -> dict:
         _check_dataset(dataset)
@@ -73,7 +73,7 @@ class GnomadVariants:
                 "chrom": g.get("chrom"), "start": g.get("start"), "stop": g.get("stop"),
                 "dataset": dataset, "n_variants": len(rows), "variants": rows}
 
-    # 4. gene constraint -----------------------------------------------------
+
     def gene_constraint(self, gene_symbol: str | None = None,
                         gene_id: str | None = None) -> dict:
         data = self.client.query(Q.GENE_CONSTRAINT, _gene_args(gene_symbol, gene_id))
@@ -82,7 +82,7 @@ class GnomadVariants:
             raise NotFound(f"gene {gene_symbol or gene_id}")
         return build_constraint_record(g)
 
-    # 5. region variants -----------------------------------------------------
+
     def region_variants(self, chrom: str, start: int, stop: int,
                         dataset: str = DEFAULT_DATASET) -> dict:
         _check_dataset(dataset)
@@ -96,7 +96,7 @@ class GnomadVariants:
         return {"chrom": chrom, "start": start, "stop": stop, "dataset": dataset,
                 "n_variants": len(rows), "variants": rows}
 
-    # 6. liftover --------------------------------------------------------------
+
     def liftover(self, variant_id: str, source_build: str = "GRCh37") -> list[dict]:
         if source_build not in ("GRCh37", "GRCh38"):
             raise ValueError("source_build must be GRCh37 or GRCh38")
@@ -107,7 +107,7 @@ class GnomadVariants:
                         "datasets": sorted(row.get("datasets") or [])})
         return sorted(out, key=lambda r: (r["liftover"] or {}).get("variant_id") or "")
 
-    # 7. ClinVar variants ------------------------------------------------------
+
     def clinvar_variants(self, gene_symbol: str | None = None,
                          gene_id: str | None = None) -> dict:
         data = self.client.query(Q.CLINVAR_VARIANTS, _gene_args(gene_symbol, gene_id))
@@ -119,7 +119,7 @@ class GnomadVariants:
                 "clinvar_release_date": (data.get("meta") or {}).get("clinvar_release_date"),
                 "n_variants": len(rows), "variants": rows}
 
-    # 8. structural variants (gene-scoped list) ---------------------------------
+
     def structural_variants(self, gene_symbol: str | None = None,
                             gene_id: str | None = None,
                             dataset: str = DEFAULT_SV_DATASET) -> dict:
@@ -135,7 +135,7 @@ class GnomadVariants:
         return {"gene_id": g["gene_id"], "symbol": g.get("symbol"), "dataset": dataset,
                 "n_variants": len(rows), "variants": rows}
 
-    # 9. structural variant (single) --------------------------------------------
+
     def structural_variant(self, sv_id: str,
                            dataset: str = DEFAULT_SV_DATASET) -> dict | None:
         _check_dataset(dataset, SV_DATASETS)
@@ -151,7 +151,7 @@ class GnomadVariants:
         row["dataset"] = dataset
         return row
 
-    # 10. mitochondrial variants --------------------------------------------------
+
     def mitochondrial_variants(self, gene_symbol: str | None = None,
                                gene_id: str | None = None,
                                region: tuple[int, int] | None = None,
@@ -177,7 +177,7 @@ class GnomadVariants:
                           for v in container.get("mitochondrial_variants") or []])
         return {**scope, "dataset": dataset, "n_variants": len(rows), "variants": rows}
 
-    # battery runner (used by gate + bench) ----------------------------------------
+
     def run_battery(self, battery: dict) -> dict:
         out: dict = {}
         out["variants"] = [self.get_variant(s["variant_id"], s["dataset"])

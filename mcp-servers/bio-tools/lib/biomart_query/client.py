@@ -22,12 +22,17 @@ import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Mapping, Sequence
+from urllib.parse import urlencode
 
 import requests
 
-DEFAULT_MARTSERVICE = "https://www.ensembl.org/biomart/martservice"
+
+DEFAULT_MARTSERVICE = "https://jun2026.archive.ensembl.org/biomart/martservice"
 DEFAULT_VIRTUAL_SCHEMA = "default"
 COMPLETION_STAMP = "[success]"
+
+
+MAX_GET_URL_BYTES = 6000
 
 
 class BiomartError(RuntimeError):
@@ -137,19 +142,19 @@ class BiomartClient:
         self,
         martservice_url: str = DEFAULT_MARTSERVICE,
         *,
-        # Worst-case schedule is timeout×(max_retries+1) + backoffs, and a
-        # client-abandoned call grinds it to completion on an aggregate
-        # worker thread — keep it minutes, not tens of minutes (the old
-        # 300s×5 schedule could pin a thread ~25min; #2875 review).
+
+
+
+
         timeout: float = 120.0,
         max_retries: int = 2,
         backoff_base: float = 2.0,
         min_request_interval: float = 0.4,
-        # BioMart accepts whole-dataset queries; an unbounded read of one
-        # builds the entire decoded TSV in the single warm aggregate process
-        # (#2875 review, OOM blast radius). 50MB ≈ millions of TSV rows —
-        # far past any per-tool battery here; raise deliberately if a future
-        # tool truly needs more.
+
+
+
+
+
         max_response_bytes: int = 50 * 1024 * 1024,
         session: requests.Session | None = None,
     ) -> None:
@@ -164,7 +169,7 @@ class BiomartClient:
         self.bytes_downloaded = 0
         self._last_request_at = 0.0
 
-    # -- public API ---------------------------------------------------------
+
 
     def query(
         self,
@@ -191,7 +196,7 @@ class BiomartClient:
             rows.sort()
         return QueryResult(attributes, rows)
 
-    # -- internals ----------------------------------------------------------
+
 
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_at
@@ -199,6 +204,17 @@ class BiomartClient:
             time.sleep(self.min_request_interval - elapsed)
 
     def _post(self, xml: str) -> str:
+        """Send one query, by GET when its URL is at most MAX_GET_URL_BYTES long and by
+        POST otherwise; return the TSV body without its completion stamp."""
+        query_string = "?" + urlencode({"query": xml})
+        url = self.martservice_url + query_string
+        if len(url) <= MAX_GET_URL_BYTES:
+            method, target, form = "GET", url, None
+            sent = "a GET request"
+        else:
+            method, target, form = "POST", self.martservice_url, {"query": xml}
+            sent = (f"a POST request (POST was used because the query would make a {len(url)}-byte "
+                    f"URL; GET is used only up to {MAX_GET_URL_BYTES} bytes)")
         last_error: Exception | None = None
         for attempt in range(self.max_retries + 1):
             if attempt:
@@ -207,17 +223,18 @@ class BiomartClient:
             self.request_count += 1
             self._last_request_at = time.monotonic()
             try:
-                resp = self._session.post(
-                    self.martservice_url,
-                    data={"query": xml},
+                resp = self._session.request(
+                    method,
+                    target,
+                    data=form,
                     timeout=self.timeout,
                     headers={"Accept-Encoding": "gzip"},
                     stream=True,
                 )
-                # Bounded read (#2875 review): iter_content yields DECODED
-                # bytes, so the cap bounds what actually lands in memory —
-                # a whole-dataset query fails loudly instead of building a
-                # multi-hundred-MB string in the one warm process.
+
+
+
+
                 chunks: list[bytes] = []
                 total = 0
                 for chunk in resp.iter_content(chunk_size=1 << 20):
@@ -235,13 +252,13 @@ class BiomartClient:
             raw = b"".join(chunks)
             self.bytes_downloaded += len(raw)
             text = raw.decode(resp.encoding or "utf-8", errors="replace")
-            if resp.status_code >= 500 or resp.status_code in (405, 429):
-                # 405/HTML pages are what Ensembl's status page serves during
-                # transient outages; treat as retryable.
+            if resp.status_code >= 500 or resp.status_code == 429:
                 last_error = BiomartError(f"HTTP {resp.status_code} from martservice")
                 continue
             if resp.status_code != 200:
-                raise BiomartError(f"HTTP {resp.status_code} from martservice: {text[:500]}")
+                raise BiomartError(
+                    f"HTTP {resp.status_code} from martservice for {sent}: {text[:500]}"
+                )
             head = text[:2000]
             if head.lstrip().lower().startswith(("<html", "<!doctype html")):
                 last_error = BiomartError(
@@ -261,8 +278,10 @@ class BiomartClient:
                 )
                 continue
             return stripped[: -len(COMPLETION_STAMP)].rstrip("\r\n")
+
         raise BiomartError(
-            f"martservice request failed after {self.max_retries + 1} attempts: {last_error!r}"
+            f"martservice {method} request failed after {self.max_retries + 1} attempts: "
+            f"{repr(last_error).replace(query_string, '')}"
         )
 
     @staticmethod

@@ -47,6 +47,7 @@ from dataclasses import dataclass, field
 from urllib.parse import quote
 
 import requests
+from mcp_servers_common.pathseg import seg
 from mcp_servers_common.ratelimit import retry_after_seconds
 
 DEFAULT_BASE_URL = "https://www.ebi.ac.uk/interpro/api"
@@ -113,7 +114,7 @@ class InterProEntryClient:
             {"Accept": "application/json", "User-Agent": USER_AGENT}
         )
 
-    # ------------------------------------------------------------- low level
+
 
     def close(self) -> None:
         self._session.close()
@@ -141,7 +142,7 @@ class InterProEntryClient:
             except requests.RequestException as exc:
                 self._last_request_t = time.monotonic()
                 last_exc = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     self._backoff(attempt)
                 continue
             if resp.status_code == 204:
@@ -150,7 +151,7 @@ class InterProEntryClient:
                 raise AccessionNotFound(f"404 Not Found: {url}")
             if resp.status_code in RETRYABLE_STATUS:
                 last_exc = InterProError(f"HTTP {resp.status_code} from {url}")
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     self._backoff(attempt, resp)
                 continue
             resp.raise_for_status()
@@ -180,11 +181,11 @@ class InterProEntryClient:
             payload = self._get_json(url)
             pages += 1
             if payload is None:
-                if pages == 1:  # 204 on the first page -- legitimately empty result set
+                if pages == 1:
                     return {"count": 0, "results": [], "pages": pages}
-                # 204 on a continuation page: upstream pagination defect (observed on
-                # /proteome/.../entry/pfam/ -- the final partial page returns 204 and
-                # rows are silently lost). Never return a partial set as if complete.
+
+
+
                 raise InterProError(
                     f"upstream returned HTTP 204 mid-pagination (page {pages}) -- "
                     f"incomplete result set ({len(results)} of {count} rows); "
@@ -217,7 +218,7 @@ class InterProEntryClient:
         parts = [f"{k}={quote(str(v), safe='')}" for k, v in params.items() if v is not None]
         return ("?" + "&".join(parts)) if parts else ""
 
-    # ------------------------------------------------------------- endpoints
+
 
     def search_entries(
         self,
@@ -235,7 +236,7 @@ class InterProEntryClient:
         by GO identifier (e.g. ``GO:0004672``).
         """
         params: dict = {"search": q, "type": entry_type, "go_term": go_term}
-        base = f"{self.base_url}/entry/{quote(str(source_db), safe='')}/"
+        base = f"{self.base_url}/entry/{seg(source_db)}/"
         if first_page_only:
             return self._first_page(base + self._qs(params))
         params["page_size"] = page_size or self.page_size
@@ -246,7 +247,7 @@ class InterProEntryClient:
         acc = accession.strip().upper()
         for prefix, db in ENTRY_DB_BY_PREFIX.items():
             if acc.startswith(prefix):
-                payload = self._get_json(f"{self.base_url}/entry/{db}/{quote(acc, safe='')}/")
+                payload = self._get_json(f"{self.base_url}/entry/{db}/{seg(acc)}/")
                 if payload is None:
                     raise AccessionNotFound(f"empty response for entry {acc}")
                 return payload
@@ -260,7 +261,7 @@ class InterProEntryClient:
     def get_clan(self, clan_acc: str) -> dict:
         """Clan (set) detail, including relationships.nodes (the member list)."""
         payload = self._get_json(
-            f"{self.base_url}/set/pfam/{quote(clan_acc.strip().upper(), safe='')}/")
+            f"{self.base_url}/set/pfam/{seg(clan_acc.strip().upper())}/")
         if payload is None:
             raise AccessionNotFound(f"empty response for clan {clan_acc}")
         return payload
@@ -279,7 +280,7 @@ class InterProEntryClient:
             return {"count": len(nodes), "results": nodes, "pages": 1}
         if via == "entry":
             return self._walk(
-                f"{self.base_url}/entry/pfam/set/pfam/{quote(acc, safe='')}/"
+                f"{self.base_url}/entry/pfam/set/pfam/{seg(acc)}/"
                 + self._qs({"page_size": self.page_size})
             )
         raise ValueError(f"via must be 'set' or 'entry', got {via!r}")
@@ -301,7 +302,7 @@ class InterProEntryClient:
         """
         db = "reviewed" if reviewed_only else "uniprot"
         base = (f"{self.base_url}/protein/{db}/entry/pfam/"
-                f"{quote(pf_acc.strip().upper(), safe='')}/")
+                f"{seg(pf_acc.strip().upper())}/")
         if first_page_only:
             return self._first_page(base + self._qs({"tax_id": tax_id}))
         if count_only:
@@ -330,7 +331,7 @@ class InterProEntryClient:
         ``/protein/...`` route paginates correctly and is unaffected.
         """
         base = (f"{self.base_url}/proteome/uniprot/entry/pfam/"
-                f"{quote(pf_acc.strip().upper(), safe='')}/")
+                f"{seg(pf_acc.strip().upper())}/")
         if first_page_only:
             return self._first_page(base)
         if count_only:

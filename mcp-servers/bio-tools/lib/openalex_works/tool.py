@@ -12,9 +12,9 @@ from .records import (lean_author, lean_source, lean_work,
                       normalize_author_id, normalize_source_id,
                       normalize_work_id)
 
-PAGE_SIZE = 200          # OpenAlex per-page maximum
-MAX_RECORDS_CEILING = 500   # hard bound on any listing walk (<= 3 pages)
-BATCH_FILTER_SIZE = 50   # ids per OR-filter when hydrating references
+PAGE_SIZE = 200
+MAX_RECORDS_CEILING = 500
+BATCH_FILTER_SIZE = 50
 
 _SORT_MAP = {
     "relevance": "relevance_score:desc",
@@ -27,7 +27,7 @@ class OpenAlexWorks:
     def __init__(self, client: OpenAlexClient | None = None):
         self.client = client or OpenAlexClient()
 
-    # ------------------------------------------------------------ helpers
+
 
     def _list(self, path: str, params: dict, max_records: int) -> dict:
         """Bounded page walk; returns {api_total, results(raw), truncated}.
@@ -63,8 +63,8 @@ class OpenAlexWorks:
             raise ValueError(
                 f"unknown sort {sort!r} — one of {sorted(_SORT_MAP)}")
         if sort == "relevance":
-            # relevance_score only exists for search queries; OpenAlex's
-            # default order for plain filters is already stable.
+
+
             return _SORT_MAP[sort] if has_search else None
         return _SORT_MAP[sort]
 
@@ -103,7 +103,7 @@ class OpenAlexWorks:
                 f"selected the most-cited ({claimants[0]['openalex_id']}) — "
                 f"see doi_claimants for the alternatives")
 
-    # ------------------------------------------------------------- works
+
 
     def search_works(self, query: str | None = None,
                      year_from: int | None = None,
@@ -130,8 +130,8 @@ class OpenAlexWorks:
             try:
                 sid = normalize_source_id(venue)
             except ValueError:
-                # plain journal name — resolve via the sources index so
-                # search_works accepts the same venue forms venue_info does
+
+
                 hits = self.search_sources(venue, max_records=1)
                 if not hits["records"]:
                     raise ValueError(
@@ -190,9 +190,9 @@ class OpenAlexWorks:
         wid = normalize_work_id(work_id)
         claimants: list[dict] = []
         if wid.startswith("doi:"):
-            # the cites: filter needs the W-id — resolve the DOI first
-            # (filter route: the alias route mis-picks among duplicate
-            # DOI claimants, see _resolve_doi_work)
+
+
+
             doi_alias = wid
             raw, claimants = self._resolve_doi_work(wid)
             wid = raw["id"].rsplit("/", 1)[-1]
@@ -248,7 +248,7 @@ class OpenAlexWorks:
                 wid, claimants)
         return result
 
-    # ----------------------------------------------------------- authors
+
 
     def search_authors(self, query: str, max_records: int = 25) -> dict:
         out = self._list("/authors", {"search": query}, max_records)
@@ -273,7 +273,7 @@ class OpenAlexWorks:
                                 for w in payload.get("results") or []]
         return rec
 
-    # ----------------------------------------------------------- sources
+
 
     def search_sources(self, query: str, max_records: int = 10) -> dict:
         out = self._list("/sources", {"search": query}, max_records)

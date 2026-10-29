@@ -33,7 +33,7 @@ def _canon(obj):
     if isinstance(obj, list):
         if obj and all(isinstance(x, dict) for x in obj):
             return sorted((_canon(x) for x in obj), key=_sort_key)
-        # scalar lists (e.g. PFM count vectors) keep positional order
+
         return [_canon(x) for x in obj]
     return obj
 

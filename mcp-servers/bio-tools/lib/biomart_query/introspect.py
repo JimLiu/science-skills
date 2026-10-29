@@ -51,7 +51,7 @@ def _get_metadata(client: BiomartClient, params: dict[str, str]) -> str:
                 client.martservice_url, params=params, timeout=client.timeout,
                 headers={"Accept-Encoding": "gzip"},
             )
-        except Exception as exc:  # requests.RequestException
+        except Exception as exc:
             last_error = exc
             continue
         client.bytes_downloaded += len(resp.content)
@@ -72,7 +72,7 @@ def _get_metadata(client: BiomartClient, params: dict[str, str]) -> str:
         f"attempts: {last_error!r}")
 
 
-# ------------------------------------------------------------------- list_marts
+
 def list_marts(client: BiomartClient | None = None) -> list[dict[str, Any]]:
     """Marts from the registry XML, sorted by name.
 
@@ -95,7 +95,7 @@ def list_marts(client: BiomartClient | None = None) -> list[dict[str, Any]]:
     return marts
 
 
-# --------------------------------------------------------------- list_datasets
+
 def list_datasets(mart: str = "ENSEMBL_MART_ENSEMBL",
                   client: BiomartClient | None = None) -> list[dict[str, Any]]:
     """Datasets of one mart (TSV route), sorted by dataset name.
@@ -108,7 +108,7 @@ def list_datasets(mart: str = "ENSEMBL_MART_ENSEMBL",
     for line in text.replace("\r\n", "\n").split("\n"):
         fields = line.split("\t")
         if len(fields) < 9 or fields[0].strip() != "TableSet":
-            continue  # blank/padding lines around the table
+            continue
         datasets.append({
             "name": fields[1],
             "display_name": fields[2],
@@ -123,7 +123,7 @@ def list_datasets(mart: str = "ENSEMBL_MART_ENSEMBL",
     return datasets
 
 
-# ------------------------------------------------------------- list_attributes
+
 def list_attributes(dataset: str, page: str | None = None,
                     client: BiomartClient | None = None) -> list[dict[str, Any]]:
     """Attributes of one dataset (TSV route), sorted by (name, page).
@@ -158,7 +158,7 @@ def list_attributes(dataset: str, page: str | None = None,
     return attrs
 
 
-# ---------------------------------------------------------------- list_filters
+
 def list_filters(dataset: str,
                  client: BiomartClient | None = None) -> list[dict[str, Any]]:
     """Filters of one dataset (TSV route), sorted by name.
@@ -197,7 +197,7 @@ def list_filters(dataset: str,
     return filters
 
 
-# ----------------------------------------------- configuration (gate use only)
+
 def configuration_names(dataset: str,
                         client: BiomartClient | None = None) -> dict[str, set]:
     """Attribute and filter internal names from the dataset configuration XML.
@@ -220,8 +220,8 @@ def configuration_names(dataset: str,
             continue
         opts = [o for o in d.iter("Option") if o.get("type")]
         if d.get("type") == "container" and opts:
-            # container filters (e.g. id-list uploads) expose their options
-            # as the actual queryable filters
+
+
             filter_names.update(o.get("internalName") for o in opts
                                 if o.get("internalName") and o.get("hidden") != "true")
         elif d.get("internalName"):

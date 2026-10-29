@@ -19,15 +19,15 @@ header) for verification.
 
 from __future__ import annotations
 
-from urllib.parse import quote
+from mcp_servers_common.pathseg import seg
 
 from .client import PrideClient
 from .records import normalize_detail_record, normalize_search_record
 
 PAGE_SIZE = 100
-MAX_PAGES = 200  # safety stop: 200 * 100 = 20k records
+MAX_PAGES = 200
 
-# spec key -> upstream filter field
+
 _FILTER_FIELDS = {
     "organism": "organisms",
     "instrument": "instruments",
@@ -102,21 +102,21 @@ def search_projects(
             complete = True
             break
         page += 1
-    # A cap exit that nevertheless retrieved every record IS complete — e.g.
-    # api_total an exact multiple of page_size equal to the page budget.
-    # Strict equality: a bounded walk somehow exceeding the first-page
-    # header total is an upstream inconsistency, and flipping it complete
-    # would hard-raise the count-verify below instead of returning the
-    # records_truncated superset (review 3386420547).
+
+
+
+
+
+
     if not complete and api_total is not None and len(records) == api_total:
         complete = True
 
     ordered = [records[acc] for acc in sorted(records)]
-    # Count-verify only when the walk ran to completion. A bounded walk
-    # (page cap hit) is a deliberate partial fetch: the upstream sorts by
-    # accession ASC server-side, so the pages walked are a stable prefix of
-    # the full result — callers get the first N records plus the true
-    # api_total, never silent truncation.
+
+
+
+
+
     if complete and api_total is not None and len(ordered) != api_total:
         raise TotalMismatchError(
             f"retrieved {len(ordered)} unique projects but API reported total_records={api_total} "
@@ -159,7 +159,7 @@ def search_first_page_naive(client: PrideClient, spec: dict) -> dict:
 
 def fetch_project(client: PrideClient, accession: str) -> dict:
     """Fetch one project's full metadata from ``/projects/{accession}``."""
-    resp = client.get(f"/projects/{quote(str(accession), safe='')}")
+    resp = client.get(f"/projects/{seg(accession)}")
     return normalize_detail_record(resp.json())
 
 

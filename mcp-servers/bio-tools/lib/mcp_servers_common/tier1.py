@@ -28,12 +28,12 @@ from mcp.types import CallToolResult, TextContent, Tool, ToolAnnotations
 
 from .errors import is_error_payload
 
-# All tier-1 tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
-# Handler: receives the raw (already JSON-decoded) arguments dict, returns
-# the exact text payload for the single TextContent block.
+
+
 Handler = Callable[[dict], str]
 
 
@@ -83,21 +83,21 @@ class Tier1Server:
             args = dict(arguments or {})
             text = await anyio.to_thread.run_sync(lambda: handler(args))
             content = [TextContent(type="text", text=text)]
-            # structuredContent is required when outputSchema is advertised
-            # (MCP spec; both the python server and the TS client enforce it).
-            # Handlers return JSON text — parse it. Returning CallToolResult
-            # directly bypasses the python server's own schema validation (our
-            # inferred schemas are deliberately lenient hints, not strict
-            # contracts).
+
+
+
+
+
+
             try:
                 parsed = json.loads(text)
             except Exception:
                 parsed = None
             structured = parsed if self._output_schema.get(tool) is not None \
                 else None
-            # Error-shaped payloads ({"error": ...}) surface as isError=True
-            # so the MCP client's try/except fires — see
-            # mcp_servers_common.errors (06-25 probe, cross-cutting #1).
+
+
+
             return CallToolResult(content=content, structuredContent=structured,
                                   isError=is_error_payload(parsed))
 

@@ -18,9 +18,9 @@ from .client import CaddClient
 from .records import (normalize_position_response, normalize_range_response,
                       sort_records)
 
-#: CADD release/build combos verified live at build time (2026-06-08).
-#: The API serves other historical releases too (e.g. v1.4/v1.5); any
-#: string matching VERSION_RE is accepted and passed through.
+
+
+
 KNOWN_VERSIONS = ("GRCh38-v1.7", "GRCh38-v1.6", "GRCh37-v1.7", "GRCh37-v1.6")
 DEFAULT_VERSION = "GRCh38-v1.7"
 VERSION_RE = re.compile(r"^GRCh3[78]-v\d+\.\d+$")
@@ -98,7 +98,7 @@ class CaddScores:
     def __init__(self, client: CaddClient | None = None):
         self.client = client or CaddClient()
 
-    # -- the three mirrored methods ------------------------------------
+
 
     def position_scores(self, chrom, pos, version: str = DEFAULT_VERSION) -> dict:
         """All possible substitutions at one genomic position.

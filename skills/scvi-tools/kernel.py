@@ -44,10 +44,10 @@ def h5ad_safe_obs(df):
     )
     for c in out.columns:
         dt = str(out[c].dtype)
-        # "string" substring covers string / string[python] / string[pyarrow]
-        # / large_string[pyarrow] / dictionary<values=string,...>[pyarrow]
-        # without sweeping in int64[pyarrow], double[pyarrow], bool[pyarrow],
-        # timestamp[...][pyarrow] etc.
+
+
+
+
         if dt == "object" or "string" in dt:
             mask = out[c].notna()
             vals = np.asarray(out[c].astype(object).where(mask, None), dtype=object)

@@ -29,10 +29,10 @@ from __future__ import annotations
 import re
 from typing import Mapping, Sequence
 
-#: Fallback display-name -> internal-name map (Ensembl genes mart, release 115).
-#: The gate prefers the map captured from pybiomart's own dataset metadata at
-#: reference-capture time (bench/reference/display_name_map.json); this frozen
-#: copy keeps the offline unit tests self-contained.
+
+
+
+
 DISPLAY_TO_INTERNAL = {
     "Gene stable ID": "ensembl_gene_id",
     "Gene name": "external_gene_name",

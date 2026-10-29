@@ -31,12 +31,12 @@ from mcp_servers_common.ratelimit import pace
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 IDCONV_URL = "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/"
 
-ESEARCH_RETSTART_CEILING = 10_000  # esearch cannot page past retstart+retmax = 10k
-IDCONV_BATCH = 200                  # ID Converter documented max ids per request
+ESEARCH_RETSTART_CEILING = 10_000
+IDCONV_BATCH = 200
 EFETCH_BATCH = 200
 
 _SORT_MAP = {
-    # MCP enum -> esearch sort value
+
     "relevance": "relevance",
     "pub_date": "pub_date",
     "author": "Author",
@@ -79,12 +79,12 @@ class PubMedSearch:
         self.session.headers.setdefault(
             "User-Agent", f"{tool}/1.0 (mailto:{email})"
         )
-        # instrumentation (read by bench)
+
         self.request_count = 0
         self.bytes_downloaded = 0
         self.request_log: list[dict[str, Any]] = []
 
-    # ------------------------------------------------------------------ core
+
 
     def close(self) -> None:
         self.session.close()
@@ -108,21 +108,20 @@ class PubMedSearch:
 
         POST (params in the body) like the sibling pubmed_fetch client —
         NCBI E-utilities accept it, and it keeps api_key out of the URL so
-        transport-error reprs can never embed the shared secret
-        (#2875 review 3383160283).
+        transport-error reprs can never embed the shared secret.
         """
         last_err: str = "no attempt made"
         for attempt in range(self.max_retries + 1):
             if attempt:
                 time.sleep(self.sleep_s * (2**attempt))
-            # Politeness pacing is PROCESS-wide per host (all NCBI clients in
-            # the aggregate share one budget), not per client instance.
+
+
             pace(url, self.sleep_s)
             try:
                 resp = self.session.post(
                     url, data=self._ident(params), timeout=self.timeout
                 )
-            except requests.RequestException as exc:  # transport error -> retry
+            except requests.RequestException as exc:
                 last_err = f"transport error: {exc!r}"
                 continue
             self.request_count += 1
@@ -134,7 +133,7 @@ class PubMedSearch:
             if resp.status_code in (429, 500, 502, 503, 504):
                 last_err = f"HTTP {resp.status_code}"
                 continue
-            # KNOWN GOTCHA: rate-limit error inside an HTTP 200 body
+
             if _is_rate_limit_body(body):
                 last_err = "rate-limit body in HTTP %d response" % resp.status_code
                 continue
@@ -147,7 +146,7 @@ class PubMedSearch:
             f"exhausted {self.max_retries} retries for {url}: {last_err}"
         )
 
-    # ---------------------------------------------------------------- search
+
 
     def search_page(
         self,
@@ -166,7 +165,7 @@ class PubMedSearch:
         page's own ``Count`` field, so arbitrarily large result sets are fine
         (esearch itself cannot page past retstart+retmax=10,000).
 
-        Operon vendored-copy addition (#2875 review 3377922590): the tier-1
+        Operon vendored-copy addition: the tier-1
         mcp-pubmed drop-in needs hosted-connector parity (first page +
         total_count/has_more) — ``search()``'s count-verified full walk
         raises on >10k-hit queries, which includes the schema's own examples.
@@ -276,7 +275,7 @@ class PubMedSearch:
             )
         return {"count": count, "pmids": pmids, "query_translation": translation}
 
-    # -------------------------------------------------------------- citmatch
+
 
     @staticmethod
     def _citation_to_bdata(c: dict[str, Any], i: int) -> tuple[str, str]:
@@ -311,8 +310,8 @@ class PubMedSearch:
             f"{EUTILS_BASE}/ecitmatch.cgi",
             {"db": "pubmed", "retmode": "xml", "bdata": bdata},
         )
-        # Response is pipe-delimited PLAIN TEXT (despite retmode=xml):
-        #   journal|year|volume|page|author|key|RESULT\n
+
+
         by_key: dict[str, dict[str, Any]] = {}
         for line in resp.text.splitlines():
             line = line.strip()
@@ -351,7 +350,7 @@ class PubMedSearch:
             )
         return out
 
-    # ----------------------------------------------------------- convert_ids
+
 
     def convert_ids(
         self, ids: list[str], from_type: str = "pmid"
@@ -414,7 +413,7 @@ class PubMedSearch:
                 records.append(rec)
         return records
 
-    # ------------------------------------------------------ copyright_status
+
 
     @staticmethod
     def _localname(tag: str) -> str:

@@ -25,12 +25,13 @@ from clinicaltrials_essie import (
 )
 from clinicaltrials_fetch import FilterSpec, build_query_params
 from mcp_servers_common import Tier1Server, load_schemas
+from mcp_servers_common.criteria import none_if_blank, reject_blank
 from mcp_servers_common.gate import apply_gate_tier1
 
 from . import marshal
 from .marshal import compact_json
 
-# Trimmed server-side field selections (piece names / JSON paths).
+
 SEARCH_FIELDS = "|".join([
     "NCTId", "OfficialTitle", "BriefTitle", "OverallStatus", "Phase",
     "StudyType", "Condition", "InterventionName", "LeadSponsorName",
@@ -44,13 +45,13 @@ ENDPOINT_FIELDS = "NCTId|protocolSection.outcomesModule"
 DETAILS_FIELDS = "protocolSection|hasResults"
 
 
-# One client per process; it paces (0.6 s between requests) and retries.
+
 @lru_cache(maxsize=1)
 def _client() -> CTGovClient:
     return CTGovClient()
 
 
-# ── shared helpers ───────────────────────────────────────────────────────────
+
 
 def _as_list(value) -> list[str]:
     """Normalize a string-or-array-or-null schema value to a list."""
@@ -99,15 +100,27 @@ def _fetch_page(params: dict[str, str], page_size: int,
     return data
 
 
-# ── query builders (pure; unit-tested offline) ──────────────────────────────
+
+
+def _blanks_as_absent(args: dict) -> dict:
+    """Copy of args with blank/whitespace-only string values removed —
+    whitespace is truthy, so without this a criterion like condition=" "
+    rides into the Essie query as a vacuous filter (and, alone, widens the
+    call to a status-only browse). Same rule as mcp_servers_common.criteria."""
+    return {k: v for k, v in args.items()
+            if not (isinstance(v, str) and not v.strip())}
+
 
 def search_trials_params(args: dict) -> dict[str, str]:
     """search_trials → clinicaltrials-fetch FilterSpec for the fielded
     filters, plus query.locn / query.spons / merged advanced_query."""
-    study_type = args.get("study_type")
+
+
+
+    study_type = none_if_blank(args.get("study_type"))
     fielded = dict(
-        condition=args.get("condition"),
-        intervention=args.get("intervention"),
+        condition=none_if_blank(args.get("condition")),
+        intervention=none_if_blank(args.get("intervention")),
         overall_status=tuple(_enum_list(args.get("status"))),
         phase=tuple(_enum_list(args.get("phase"))),
         study_type=study_type.strip().upper() if study_type else None,
@@ -118,18 +131,32 @@ def search_trials_params(args: dict) -> dict[str, str]:
         params = build_query_params(spec)
     else:
         params = {}
-    if args.get("location"):
+    if none_if_blank(args.get("location")):
         params["query.locn"] = args["location"]
-    if args.get("sponsor"):
+    if none_if_blank(args.get("sponsor")):
         params["query.spons"] = args["sponsor"]
-    if args.get("advanced_query"):
+    if none_if_blank(args.get("advanced_query")):
         params["filter.advanced"] = and_join(
             params.get("filter.advanced"), args["advanced_query"])
+
+
+
+
+    if not params:
+        raise ValueError(
+            "search_trials needs at least one of: condition, intervention, "
+            "status, phase, study_type, location, sponsor, advanced_query "
+            "(page_token continuations must repeat the original criteria)")
     return params
 
 
 def sponsor_params(args: dict) -> dict[str, str]:
     """search_by_sponsor → Essie LeadSponsorName phrase (partial match)."""
+    args = _blanks_as_absent(args)
+
+
+    if not args.get("sponsor_name"):
+        raise ValueError("sponsor_name must be non-empty")
     parts = [area_phrase("LeadSponsorName", args["sponsor_name"])]
     phases = _enum_list(args.get("phase"))
     if phases:
@@ -153,6 +180,7 @@ def eligibility_params(args: dict) -> dict[str, str]:
       sex=ALL matches all-comers trials.
     - status defaults to RECRUITING (documented default).
     """
+    args = _blanks_as_absent(args)
     parts: list[str] = []
     if args.get("eligibility_keywords"):
         parts.append(area_phrase("EligibilityCriteria", args["eligibility_keywords"]))
@@ -185,6 +213,7 @@ def investigator_params(args: dict) -> dict[str, str]:
     """search_investigators → Essie OverallOfficialName /
     ResponsiblePartyInvestigatorFullName phrase search; institution filters
     on LocationFacility (and takes precedence over location, as documented)."""
+    args = _blanks_as_absent(args)
     parts: list[str] = []
     if args.get("investigator_name"):
         name = args["investigator_name"]
@@ -224,9 +253,14 @@ def endpoints_params(args: dict) -> dict[str, str]:
     return params
 
 
-# ── tool handlers ────────────────────────────────────────────────────────────
+
 
 def get_trial_details(args: dict) -> str:
+
+
+
+
+    reject_blank(nct_id=args["nct_id"])
     nct = normalize_nct(args["nct_id"])
     try:
         study, _meta = _client().get_study(nct, fields=DETAILS_FIELDS)
@@ -239,11 +273,12 @@ def get_trial_details(args: dict) -> str:
 
 
 def analyze_endpoints(args: dict) -> str:
+    args = _blanks_as_absent(args)
     nct_id = args.get("nct_id")
     condition = args.get("condition")
     if not nct_id and not condition:
         raise ValueError("analyze_endpoints needs nct_id or condition")
-    if nct_id:  # single-trial mode takes precedence (documented)
+    if nct_id:
         nct = normalize_nct(nct_id)
         study, _meta = _client().get_study(nct, fields=ENDPOINT_FIELDS)
         return compact_json(marshal.endpoints_response([study], nct, None))
@@ -294,9 +329,9 @@ def build_server() -> Tier1Server:
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py): enforce
-    # mcp_bio/deferred.json exactly like the aggregate. Serve-time only —
-    # build_server() stays pristine for parity tests and the aggregate.
+
+
+
     t1 = build_server()
     apply_gate_tier1(t1)
     t1.run()

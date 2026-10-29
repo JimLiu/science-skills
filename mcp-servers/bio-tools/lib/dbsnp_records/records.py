@@ -5,7 +5,7 @@ from __future__ import annotations
 
 MAX_CITATIONS = 20
 
-# RefSeq chromosome accession prefix -> chromosome name.
+
 _NC_CHROM = {**{f"NC_{n:06d}": str(n) for n in range(1, 23)},
              "NC_000023": "X", "NC_000024": "Y", "NC_012920": "MT"}
 
@@ -37,7 +37,7 @@ def _assembly_placements(psd: dict) -> list[dict]:
             "assembly_full": assembly_full,
             "seq_id": p.get("seq_id"),
             "chrom": _chrom(p.get("seq_id")),
-            "position": alleles[0].get("position", -1) + 1,  # SPDI is 0-based
+            "position": alleles[0].get("position", -1) + 1,
             "ref": ref,
             "alts": alts,
             "is_primary": bool(p.get("is_ptlp")),
@@ -156,7 +156,7 @@ def distill_refsnp(payload: dict) -> dict:
             spdi = entry.get("allele", {}).get("spdi") or {}
             if not spdi or spdi.get("deleted_sequence") == \
                     spdi.get("inserted_sequence"):
-                continue  # reference allele row
+                continue
             annotation = annotations[i] if i < len(annotations) else {}
             alleles.append({
                 "allele": spdi.get("inserted_sequence"),

@@ -43,6 +43,11 @@ host.skills.edit(name, path, content,       # create/overwrite (old_string=None)
 host.skills.publish(name, overwrite=False)  # promote draft → live skill set
 ```
 
+(If the user's organization has custom skills turned off, creating a NEW
+skill or publishing a draft is refused with an error saying custom skills are
+turned off for the user's organization; editing an existing skill still works.
+Tell the user rather than retrying.)
+
 Everything below that says "write SKILL.md" / "save test cases to
 `evals/evals.json`" / "ship `kernel.py`" means
 `host.skills.edit(name, <path>, <content>)`. Iterate with
@@ -127,18 +132,39 @@ Guidance:
   (not `url = url or MY_CONSTANT`, which also replaces `0`, `""`, `[]`).
 - Do not use `_`-prefixed top-level names — they are reserved by the sidecar
   loader and will cause the entire kernel.py to be rejected.
+- Do not shadow Python builtins at top level (`def open`, `print = ...`,
+  `import x as input`, …) — sidecar names are bound into the session
+  globals, so the gate rejects any builtin name; prefix helpers instead
+  (`open_table`, not `open`).
 - Defer third-party imports to inside function bodies. The skeleton
   `python` env ships stdlib + a small starter set (numpy, pandas, scipy,
-  matplotlib, seaborn, pillow), so e.g. `import requests` at module scope
-  surfaces a load error on every fresh kernel. Import errors don't fail the
-  skill load — the agent sees the traceback and can `manage_packages` then
-  re-load.
+  matplotlib, seaborn, pillow and, on newer installs, requests), so e.g.
+  `import httpx` at module scope surfaces a load error on every fresh kernel.
+  Import errors don't fail the skill load — the agent sees the traceback and
+  can `manage_packages` then re-load.
 - Keep it small and self-contained. `kernel.py` cannot import from the
-  skill's `scripts/` dir (it's exec'd into `__main__` with the skill dir not
-  on `sys.path` — that import is the classic load error). If a helper wants
-  more than ~100 lines, trim it to the core operations the agent actually
-  calls; `scripts/` is for standalone CLI tools run via bash, not for
-  backing the sidecar.
+  skill's `scripts/` dir (it's exec'd into a per-skill kernel namespace with
+  the skill dir not on `sys.path` — that import is the classic load error).
+  If a helper wants more than ~100 lines, trim it to the core operations the
+  agent actually calls; `scripts/` is for standalone CLI tools run via bash,
+  not for backing the sidecar.
+- Namespacing (how your helpers coexist with other skills'): each
+  `kernel.py`/`kernel.R` runs in its own namespace, and its public names are
+  mirrored to the shared session — bare when no earlier-loaded skill owns
+  the name (first-owner-wins), and normally also under a stable qualified
+  alias (typically `<skill-slug>__<name>`; if even the alias name is
+  squatted the load report says which form survives). If another skill
+  already owns a
+  bare name, the load report tells the agent the exact alias to call — you
+  don't need globally unique helper names, but distinctive ones avoid the
+  aliased path. Two semantics to know: your functions always call *your*
+  same-file helpers and constants (another skill or the agent rebinding the
+  bare name won't redirect them), and `globals()` inside your functions is
+  the skill's namespace — reads AND `'x' in globals()` membership checks
+  both see agent/session names through the fallback (so membership matches
+  what a read would find, and serializers like cloudpickle capture what
+  your functions actually use); `keys()`/iteration list only your own
+  definitions.
 
 Minimal example:
 
@@ -148,7 +174,7 @@ import pandas as pd  # starter-set package — OK at module scope
 
 def annotate_df(df: pd.DataFrame, gene_col: str = "gene") -> pd.DataFrame:
     """Attach HGNC symbols; see SKILL.md ## Workflow step 3."""
-    import requests  # not in starter set — defer to function body
+    import httpx  # not in starter set — defer to function body
     ...
     return df
 ```
@@ -508,7 +534,9 @@ This means your eval queries should be substantive enough that Claude would actu
 
 Take `best_description` from the JSON output and update the skill's SKILL.md
 frontmatter — `host.skills.edit(name, "SKILL.md", best_description,
-old_string=old_description)`. Show the user before/after and report the scores.
+old_string=old_description)`. Keep the frontmatter valid YAML: double-quote a
+`description:` value that contains `: `, or publishing will be refused. Show
+the user before/after and report the scores.
 
 ---
 
@@ -563,7 +591,7 @@ If you're in Cowork, the main things to know are:
 - Whether you're in Cowork or in Claude Code, after running tests, generate the eval viewer with `generate_review.py` (not your own hand-written HTML) before evaluating the outputs yourself or revising the skill. The human should see the outputs before the model self-corrects.
 - Feedback works differently: since there's no running server, the viewer's "Submit All Reviews" button will download `feedback.json` as a file. You can then read it from there (you may have to request access first).
 - Packaging works — `package_skill.py` just needs Python and a filesystem.
-- Description optimization (`run_loop.py` / `run_eval.py`) should work in Cowork just fine since it uses `claude -p` via subprocess, not a browser, but please save it until you've fully finished making the skill and the user agrees it's in good shape.
+- Description optimization (`run_loop.py` / `run_eval.py`) uses `claude -p` via subprocess, not a browser — but its trigger probe writes a command file under `<project>/.claude/commands/`, and sandboxed environments deny writes to `.claude` by default (it's in the sandbox write-deny registries; macOS raises EPERM, a read-only Linux grant raises EROFS, and on a writable Linux grant the probe lands in an in-sandbox tmpfs the host never sees — which can also hide the project's real `.claude` settings from the nested `claude -p`). In-sandbox eval needs an explicit `.claude` grant (L16); when the probe write errors, `run_eval.py` now fails loudly with a clear error rather than silently corrupting verdicts. Either way, please save it until you've fully finished making the skill and the user agrees it's in good shape.
 - **Updating an existing skill**: The user might be asking you to update an existing skill, not create a new one. Follow the update guidance in the claude.ai section above.
 
 ---

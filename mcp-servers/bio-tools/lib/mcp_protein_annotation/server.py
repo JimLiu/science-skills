@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import interpro_domains
 import interpro_entry_search
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import blank, none_if_blank, reject_blank
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 from protein_atlas import ProteinAtlas
 from string_network import (
@@ -29,10 +30,12 @@ from string_network import (
     map_identifiers,
 )
 
-mcp = FastMCP("mcp-protein-annotation")
 
-# Shared clients: fleet clients pace/retry internally; reusing one instance
-# per backend preserves the politeness budget across consecutive tool calls.
+
+mcp = GuardedFastMCP("mcp-protein-annotation")
+
+
+
 _entry_client: interpro_entry_search.InterProEntryClient | None = None
 _atlas: ProteinAtlas | None = None
 _string_client: StringClient | None = None
@@ -59,9 +62,9 @@ def _string() -> StringClient:
     return _string_client
 
 
-# --------------------------------------------------------------------------- #
-# InterPro: protein -> domain architecture
-# --------------------------------------------------------------------------- #
+
+
+
 
 @mcp.tool(annotations=READ_ONLY)
 def get_domain_architecture(accessions: list[str]) -> dict:
@@ -86,9 +89,9 @@ def get_domain_architecture(accessions: list[str]) -> dict:
     return interpro_domains.fetch_domain_architecture(accessions)
 
 
-# --------------------------------------------------------------------------- #
-# InterPro/Pfam: entry-centric search
-# --------------------------------------------------------------------------- #
+
+
+
 
 @mcp.tool(annotations=READ_ONLY)
 def search_interpro_entries(
@@ -114,6 +117,15 @@ def search_interpro_entries(
     "results": [{accession, name, type, source_database, ...}, ...]} with
     rows sorted by accession.
     """
+
+
+
+
+
+    reject_blank(query=query, entry_type=entry_type, source_db=source_db,
+                 go_term=go_term)
+    if query is None and go_term is None:
+        raise ValueError("provide 'query' or 'go_term'")
     return interpro_entry_search.search_entries(
         q=query, entry_type=entry_type, source_db=source_db, go_term=go_term,
         client=_entries(),
@@ -133,14 +145,21 @@ def get_interpro_entry(accession: str) -> dict:
     return interpro_entry_search.get_entry(accession, client=_entries())
 
 
-@mcp.tool(annotations=READ_ONLY)
+
+
+@mcp.tool(annotations=READ_ONLY, blank_as_absent={"query"})
 def search_pfam_clans(query: str | None = None) -> dict:
     """Keyword search over Pfam clans (InterPro 'sets', accessions CLxxxx).
 
     Returns {"count": n, "results": [{accession, name, ...}, ...]}; an empty
     upstream result (HTTP 204) yields count=0 with an empty list.
     """
-    return interpro_entry_search.search_clans(q=query, client=_entries())
+
+
+
+
+    return interpro_entry_search.search_clans(q=none_if_blank(query),
+                                              client=_entries())
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -201,9 +220,9 @@ def get_pfam_family_proteomes(
     )
 
 
-# --------------------------------------------------------------------------- #
-# Human Protein Atlas
-# --------------------------------------------------------------------------- #
+
+
+
 
 @mcp.tool(annotations=READ_ONLY)
 def get_protein_atlas_gene(gene: str, full: bool = False) -> dict:
@@ -243,12 +262,17 @@ def search_protein_atlas(
     Returns a list of row dicts keyed by the human-readable field names of
     the per-gene record.
     """
+
+
+
+    if blank(query):
+        raise ValueError("query must be non-empty")
     return _hpa().search(query, columns=columns)
 
 
-# --------------------------------------------------------------------------- #
-# STRING
-# --------------------------------------------------------------------------- #
+
+
+
 
 @mcp.tool(annotations=READ_ONLY)
 def map_string_ids(symbols: list[str], species: int = 9606) -> dict:
@@ -338,10 +362,10 @@ def get_string_best_similarity_hits(
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

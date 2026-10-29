@@ -21,10 +21,10 @@ from typing import Any, Iterable, Sequence, Union
 import httpx
 
 BASE_URL = "https://mygene.info/v3"
-BATCH_SIZE = 1000  # documented mygene.info maximum number of terms/ids per POST request
+BATCH_SIZE = 1000
 DEFAULT_TIMEOUT = 30.0
 RETRY_STATUS = {429, 500, 502, 503, 504}
-DROP_FIELDS = ("_score", "_version")  # relevance/version metadata, not scientific content
+DROP_FIELDS = ("_score", "_version")
 
 FieldSpec = Union[str, Sequence[str]]
 
@@ -73,7 +73,7 @@ class MyGeneQueryClient:
             transport=transport,
         )
 
-    # ------------------------------------------------------------------ HTTP core
+
     def _throttle(self) -> None:
         dt = time.monotonic() - self._last_request_t
         if dt < self.min_request_interval:
@@ -107,7 +107,7 @@ class MyGeneQueryClient:
             f"POST {url} failed after {self.max_retries + 1} attempts"
         ) from last_exc
 
-    # ------------------------------------------------------------------ public API
+
     def querymany(
         self,
         terms: Sequence[str],
@@ -150,7 +150,7 @@ class MyGeneQueryClient:
             records.extend(self._post("/gene", payload))
         return self._finalize(records, ids)
 
-    # ------------------------------------------------------------------ helpers
+
     def _finalize(self, records: list[dict], input_terms: Sequence[str]) -> list[dict]:
         """Strip volatile fields and sort records deterministically.
 

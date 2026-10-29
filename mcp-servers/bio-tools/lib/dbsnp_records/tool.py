@@ -46,7 +46,7 @@ class DbsnpRecords:
         if len(cleaned) > MAX_BATCH_RSIDS:
             raise ValueError(f"too many rsIDs ({len(cleaned)}); max "
                              f"{MAX_BATCH_RSIDS} per call")
-        numbers = [(_rs_number(r), r) for r in cleaned]  # validate all first
+        numbers = [(_rs_number(r), r) for r in cleaned]
         t0 = time.monotonic()
         records, not_found, not_processed = [], [], []
         for i, (num, raw) in enumerate(numbers):

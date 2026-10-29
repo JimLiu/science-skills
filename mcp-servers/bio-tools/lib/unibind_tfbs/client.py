@@ -42,8 +42,8 @@ class PacedJsonClient:
     """
 
     RETRY_STATUSES = {429, 500, 502, 503, 504}
-    # 206 Partial Content = UCSC hubApi cut the listing at maxItemsOutput;
-    # the body is the normal payload carrying maxItemsLimit: true.
+
+
     OK_STATUSES = {200, 206}
 
     def __init__(self, base_url: str, min_interval_s: float = 0.5,
@@ -72,7 +72,7 @@ class PacedJsonClient:
         """
         url = path if path.startswith("http") else self.base_url + path
         last_err: Exception | None = None
-        for attempt in range(2):          # <= 1 retry (budget rule)
+        for attempt in range(2):
             self._throttle()
             try:
                 resp = self.session.get(url, params=params,

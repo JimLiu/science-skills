@@ -17,7 +17,7 @@ import httpx
 DEFAULT_BASE_URL = "https://www.ebi.ac.uk/pride/ws/archive/v2"
 USER_AGENT = "pride-projects/0.1 (bio-tools; python-httpx)"
 
-# HTTP status codes treated as transient and retried.
+
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
@@ -60,7 +60,7 @@ class PrideClient:
             transport=transport,
         )
 
-    # -- lifecycle -----------------------------------------------------------
+
     def close(self) -> None:
         self._client.close()
 
@@ -70,7 +70,7 @@ class PrideClient:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    # -- core request --------------------------------------------------------
+
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_at
         if elapsed < self.min_interval:

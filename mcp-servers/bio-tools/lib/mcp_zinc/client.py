@@ -18,15 +18,15 @@ poll loop ticks at POLL_INTERVAL_S — never a tight loop.
 Failure taxonomy (every arm raises ZincApiError with an actionable message,
 never a stack trace): HTTP 400 (bad parameters), SPA-shell/non-JSON bodies
 (request not understood as an API call), missing task receipt, server-side
-FAILURE status, transient transport errors (bounded retries on submit), and
-poll deadline exhaustion (ZincTaskTimeout names the task uuid).
+FAILURE status, an unusable or blocked service (ZincUnavailable, ZincBlocked),
+and poll deadline exhaustion (ZincTaskTimeout names the task uuid).
 """
 
 from __future__ import annotations
 
 import json
 import time
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import requests
 
@@ -35,30 +35,32 @@ from mcp_servers_common.ratelimit import pace, retry_after_seconds
 BASE_URL = "https://cartblanche22.docking.org"
 FILES_BASE_URL = "https://files.docking.org/zinc22"
 
-# One standard projection for every search: identity + structure +
-# purchasability + tranche-encoded properties.
+
+
 DEFAULT_OUTPUT_FIELDS = "zinc_id,smiles,tranche_name,catalogs"
 
-MIN_INTERVAL_S = 1.0        # politeness floor per request (submit + poll)
-POLL_INTERVAL_S = 1.5       # pause between result polls
-# Overall submit→result budget. The MCP transport hangs at ~60s, so a
-# default at the ceiling defeats the actionable ZincTaskTimeout (which
-# names the task uuid for manual re-poll) on the slow-similarity path it
-# exists for — the same lesson pubmed's ecitmatch budget encodes (review
-# 3415624590). 25s + bounded submit retries + pacing stays well under it.
+MIN_INTERVAL_S = 1.0
+POLL_INTERVAL_S = 1.5
+
+
+
+
+
 DEFAULT_TIMEOUT_S = 25.0
 MIN_TIMEOUT_S = 5.0
-MAX_TIMEOUT_S = 55.0        # hard cap at the transport ceiling - margin
-HTTP_TIMEOUT_S = 30.0       # per-request transport timeout CEILING (each
-                            # request is further clamped to remaining budget)
-SUBMIT_RETRIES = 2          # extra attempts on transient submit failures
-# Bounded poll-body read (review 3415652687): a broad similarity query can
-# match a large slice of 230M compounds; without a cap the warm shared
-# bio-tools process would buffer the whole JSON before max_results applies.
-# Same class + same number as biomart_query's max_response_bytes cap.
+MAX_TIMEOUT_S = 55.0
+
+
+
+UNANSWERED_LIMIT_S = 10.0
+SUBMIT_RETRIES = 2
+
+
+
+
 MAX_RESPONSE_BYTES = 50 * 1024 * 1024
 
-# Result sources, presentation order (current release first).
+
 SOURCE_ORDER = ("zinc22", "zinc20")
 
 _PENDING_STATUSES = frozenset({"PENDING", "STARTED", "PROGRESS", "RETRY"})
@@ -75,9 +77,9 @@ class ZincTaskTimeout(ZincApiError):
     def __init__(self, task: str, waited_s: float,
                  last_transport_error: str | None = None) -> None:
         self.task = task
-        # Review 4711232176#3: a network outage looks like "still computing"
-        # without this — name the last transport error class so the caller
-        # can tell genuine slow compute from a connectivity problem.
+
+
+
         if last_transport_error:
             cause = (f"the last poll attempt hit a transport error "
                      f"({last_transport_error}) — this may be a connectivity "
@@ -89,6 +91,36 @@ class ZincTaskTimeout(ZincApiError):
             f"{cause}. Re-poll {BASE_URL}/search/result/{task} later, or "
             "retry with a narrower query (smaller dist / fewer ids / lower "
             "count) or a larger timeout_s.")
+
+
+class ZincUnavailable(ZincApiError):
+    """The service sent no usable answer: silence, failed connections, or
+    only retryable HTTP errors. `cause` names an exception class or
+    "HTTP <code>"; it never carries text from the wire."""
+
+    def __init__(self, cause: str) -> None:
+        super().__init__(
+            f"The ZINC service ({urlsplit(BASE_URL).netloc}) cannot be used "
+            f"right now ({cause}). The search itself is very unlikely to be "
+            "the reason, so don't call the ZINC tools again for now: tell "
+            "the user that ZINC is down, busy or cannot be reached from this "
+            "computer, then carry on without it (say so if you use another "
+            "source) or try again later.")
+
+
+class ZincBlocked(ZincApiError):
+    """A proxy on the way answered 403 and opened no connection: a network
+    policy's refusal of the host, which is no outage and no fault of ZINC's."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The network proxy refused to open a connection to "
+            f"{urlsplit(BASE_URL).netloc} (ProxyError: the proxy answered "
+            "403), so ZINC was never asked, and calling again will not help "
+            "until that host is allowed. That is a network policy's block, "
+            "not an outage: tell the user that they or their administrator "
+            "would have to allow that host, or ask for access to it where "
+            "that can be granted.")
 
 
 def _looks_like_html(text: str) -> bool:
@@ -116,8 +148,6 @@ class ZincClient:
                  poll_interval_s: float = POLL_INTERVAL_S) -> None:
         if session is None:
             session = requests.Session()
-            session.headers.setdefault(
-                "User-Agent", "operon-mcp-zinc/0.1 (bundled MCP connector)")
         self.session = session
         self._sleep = sleep
         self._clock = clock
@@ -128,36 +158,41 @@ class ZincClient:
     def _remaining(self, deadline: float) -> float:
         return max(0.0, deadline - self._clock())
 
-    def _http_timeout(self, deadline: float) -> float:
-        # Per-request transport timeout, clamped to the remaining overall
-        # budget so a slow socket can't run past the deadline. Floor at 1s:
-        # requests rejects 0, and a sub-second budget is already exhausted.
-        return max(1.0, min(HTTP_TIMEOUT_S, self._remaining(deadline)))
+    def _http_timeout(self, deadline: float) -> tuple[float, float]:
 
-    # ── submit ───────────────────────────────────────────────────────────
+
+
+        left = max(1.0, self._remaining(deadline))
+        return left / 2, left
+
+
 
     def _submit(self, endpoint: str, data: dict, deadline: float) -> str:
         """POST form fields to a search endpoint; return the task uuid.
 
-        Bounded by ``deadline`` (review 3415624590): Retry-After backoffs
-        and per-request timeouts are clamped against the remaining overall
-        budget so the submit phase cannot escape it.
+        Bounded by ``deadline``: each backoff and each request's timeouts
+        are cut to the time left before it.
         """
         url = f"{BASE_URL}/{endpoint}"
         failure = "no attempt made"
         for attempt in range(SUBMIT_RETRIES + 1):
             if attempt > 0 and self._remaining(deadline) <= 0:
-                failure += " (overall timeout budget exhausted during submit)"
                 break
             self._pace(url, self.min_interval_s)
             try:
                 resp = self.session.post(url, data=data,
                                          timeout=self._http_timeout(deadline))
             except requests.RequestException as exc:
-                # Class name only — transport reprs can embed URLs/params.
-                failure = (f"network error talking to {url}: "
-                           f"{exc.__class__.__name__}")
-                if attempt < SUBMIT_RETRIES:
+
+
+
+                if (isinstance(exc, requests.exceptions.ProxyError)
+                        and "Tunnel connection failed: 403" in str(exc)):
+                    raise ZincBlocked() from None
+
+                failure = exc.__class__.__name__
+                if (attempt < SUBMIT_RETRIES
+                        and not isinstance(exc, requests.Timeout)):
                     self._sleep(min(2.0 * (attempt + 1),
                                     self._remaining(deadline)))
                     continue
@@ -171,8 +206,7 @@ class ZincClient:
                     "ZINC id / supplier-code format, subset name). Server "
                     f"detail: {_body_excerpt(resp.text)}")
             if resp.status_code in _TRANSIENT_CODES:
-                failure = (f"HTTP {resp.status_code} from {endpoint} "
-                           "(transient upstream condition)")
+                failure = f"HTTP {resp.status_code}"
                 if attempt < SUBMIT_RETRIES:
                     backoff = retry_after_seconds(
                         resp.headers.get("Retry-After"),
@@ -206,11 +240,9 @@ class ZincClient:
                     f"(keys: {sorted(payload) if isinstance(payload, dict) else type(payload).__name__}) "
                     "— the async submit contract may have changed.")
             return str(task)
-        raise ZincApiError(
-            f"CartBlanche22 {endpoint} submission failed after "
-            f"{SUBMIT_RETRIES + 1} attempts: {failure}")
+        raise ZincUnavailable(failure)
 
-    # ── poll ─────────────────────────────────────────────────────────────
+
 
     def _read_capped(self, resp: requests.Response, task: str) -> str:
         """Streamed body read bounded at MAX_RESPONSE_BYTES.
@@ -218,7 +250,7 @@ class ZincClient:
         iter_content yields DECODED bytes, so the cap bounds what actually
         lands in memory — a runaway result fails loudly with a narrow-the-
         query message instead of building a multi-hundred-MB string in the
-        one warm process (review 3415652687; same shape as biomart_query's
+        one warm process (same shape as biomart_query's
         max_response_bytes guard).
         """
         chunks: list[bytes] = []
@@ -239,26 +271,30 @@ class ZincClient:
 
     def _poll(self, task: str, deadline: float, timeout_s: float) -> dict:
         """Poll /search/result/<task> until completion; return the payload."""
-        # Task uuid comes from the server, but quote it anyway — never
-        # interpolate unsanitized text into a URL path segment.
+
+
         url = f"{BASE_URL}/search/result/{quote(str(task), safe='')}"
         last_transport_error: str | None = None
+        answered_at = self._clock()
         while True:
             self._pace(url, self.min_interval_s)
             pending = False
-            # The try/except spans the GET *and* the streamed body read
-            # (review 3415838646): with stream=True the body downloads
-            # lazily inside _read_capped's iter_content loop, so a mid-body
-            # ChunkedEncodingError/ConnectionError must be the same
-            # transient-poll-miss as a connect-time failure — re-polling the
-            # same uuid fetches the same completed result. ZincApiError
-            # raised inside the block is a different type and propagates.
+            miss = None
+
+
+
+
+
+
+
             try:
-                resp = self.session.get(url, stream=True,
-                                        timeout=self._http_timeout(deadline))
+                resp = self.session.get(
+                    url, stream=True, timeout=self._http_timeout(
+                        min(deadline, answered_at + UNANSWERED_LIMIT_S)))
                 last_transport_error = None
                 if resp.status_code in _TRANSIENT_CODES:
                     resp.close()
+                    miss = f"HTTP {resp.status_code}"
                     pending = True
                 elif resp.status_code != 200:
                     body = self._read_capped(resp, task)
@@ -286,14 +322,14 @@ class ZincClient:
                             "FAILURE). Check the query parameters (SMILES "
                             "syntax, id formats) and retry; if it persists "
                             "the upstream worker may be unhealthy.")
-                    # Ready iff SUCCESS, OR a status-LESS body where the
-                    # result key is PRESENT (reviews 3415810984 / 3415949458):
-                    # a PENDING/PROGRESS body whose `result` is a placeholder
-                    # []/{} keeps polling (`is not None` short-circuited
-                    # there); a status-less `{"result": []}` is a real
-                    # zero-match completion (the `or truthy` cure for the
-                    # first regressed this — `"result" in payload` is the
-                    # right gate when no status is sent).
+
+
+
+
+
+
+
+
                     if isinstance(payload, dict) and (
                             status == "SUCCESS"
                             or (status is None and "result" in payload)):
@@ -305,16 +341,20 @@ class ZincClient:
                             f"ZINC task {task} reported unexpected status "
                             f"{status!r}.")
             except requests.RequestException as exc:
-                # Transient poll miss (connect-time OR mid-body stream
-                # drop); the deadline bounds us. Class name only —
-                # transport reprs can embed URLs/params.
-                last_transport_error = exc.__class__.__name__
+
+
+
+                miss = last_transport_error = exc.__class__.__name__
                 pending = True
+            if miss is None:
+                answered_at = self._clock()
+            elif self._clock() - answered_at >= UNANSWERED_LIMIT_S:
+                raise ZincUnavailable(miss)
             if pending and self._clock() >= deadline:
                 raise ZincTaskTimeout(task, timeout_s, last_transport_error)
             self._sleep(min(self.poll_interval_s, self._remaining(deadline)))
 
-    # ── public surface ───────────────────────────────────────────────────
+
 
     def search(self, endpoint: str, data: dict,
                timeout_s: float = DEFAULT_TIMEOUT_S) -> dict[str, list[dict]]:
@@ -324,19 +364,25 @@ class ZincClient:
         ``zinc20``), each value a list of record dicts — the upstream shape,
         normalized so absent/odd payloads never leak to tools.
 
-        ``timeout_s`` is the OVERALL submit→result budget (review
-        3415624590): the deadline is computed once here and threaded
+        ``timeout_s`` is the OVERALL submit→result budget:
+        the deadline is computed once here and threaded
         through ``_submit`` (whose backoffs are clamped against it) and
         ``_poll`` so neither phase can run past it.
         """
-        deadline = self._clock() + timeout_s
-        task = self._submit(endpoint, data, deadline)
+
+
+
+        self.session.close()
+        now = self._clock()
+        deadline = now + timeout_s
+        task = self._submit(endpoint, data,
+                            min(deadline, now + UNANSWERED_LIMIT_S))
         payload = self._poll(task, deadline, timeout_s)
         result = payload.get("result")
         if result is None:
             return {}
         if isinstance(result, list):
-            # Defensive: some deployments return a bare list (single-source).
+
             return {"zinc22": [r for r in result if isinstance(r, dict)]}
         if not isinstance(result, dict):
             raise ZincApiError(

@@ -25,9 +25,9 @@ APP_NUMBER_RE = re.compile(r"^(NDA|ANDA|BLA)\d{6}$")
 
 VALID_SEARCH_TYPES = ("and", "or")
 
-#: Date field used to stabilise frozen battery counts: an application
-#: matches only if at least one submission status date falls in the range,
-#: excluding applications first appearing after the freeze horizon.
+
+
+
 DATE_CAP_FIELD = "submissions.submission_status_date"
 
 
@@ -50,20 +50,20 @@ class SearchSpec:
     ``search_type='or'``).
     """
 
-    brand: Optional[str] = None                 # products.brand_name
-    generic: Optional[str] = None               # openfda.generic_name
-    active_ingredient: Optional[str] = None     # products.active_ingredients.name
-    sponsor: Optional[str] = None               # sponsor_name
-    marketing_status: Optional[str] = None      # products.marketing_status
-    dosage_form: Optional[str] = None           # products.dosage_form
-    route: Optional[str] = None                 # products.route
-    application_number: Optional[str] = None    # application_number
-    pharm_class: Optional[str] = None           # openfda.pharm_class_<type>
-    pharm_class_type: str = "epc"               # epc | moa | cs | pe
+    brand: Optional[str] = None
+    generic: Optional[str] = None
+    active_ingredient: Optional[str] = None
+    sponsor: Optional[str] = None
+    marketing_status: Optional[str] = None
+    dosage_form: Optional[str] = None
+    route: Optional[str] = None
+    application_number: Optional[str] = None
+    pharm_class: Optional[str] = None
+    pharm_class_type: str = "epc"
     search_type: str = "and"
-    submission_date_from: Optional[str] = None  # YYYY-MM-DD or YYYYMMDD
+    submission_date_from: Optional[str] = None
     submission_date_to: Optional[str] = None
-    raw: Optional[str] = None                   # escape hatch: verbatim search=
+    raw: Optional[str] = None
 
     _FIELD_MAP = (
         ("brand", "products.brand_name"),

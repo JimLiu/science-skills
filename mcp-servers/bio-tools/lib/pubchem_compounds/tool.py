@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from .client import PUG_BASE, PUG_VIEW_BASE, NotFound, PubChemApiError, PugRestClient
 
-# The 2025 PUG REST property names: ``SMILES`` is the full (isomeric) SMILES,
-# ``ConnectivitySMILES`` the stereo-stripped one (formerly CanonicalSMILES).
+
+
 PROPERTY_LIST = (
     "MolecularFormula,MolecularWeight,SMILES,ConnectivitySMILES,InChI,"
     "InChIKey,IUPACName,XLogP,ExactMass,TPSA,Charge,HBondDonorCount,"
@@ -26,7 +26,7 @@ class PubChemCompounds:
     def __init__(self, client: PugRestClient | None = None):
         self.client = client or PugRestClient()
 
-    # -- identifier resolution -------------------------------------------------
+
 
     def search_cids(self, query: str, namespace: str = "name") -> list[int]:
         """Resolve an identifier to PubChem CIDs (empty list when no match).
@@ -48,7 +48,7 @@ class PubChemCompounds:
             return []
         return list(payload.get("IdentifierList", {}).get("CID", []))
 
-    # -- properties / synonyms -------------------------------------------------
+
 
     def properties(self, cids: list[int]) -> list[dict]:
         """Computed properties for a batch of CIDs (one request).
@@ -85,7 +85,7 @@ class PubChemCompounds:
             out[int(info["CID"])] = list(info.get("Synonym", []))
         return out
 
-    # -- bioassay summary --------------------------------------------------------
+
 
     def assay_summary(self, cid: int) -> list[dict]:
         """All bioassay summary rows for a CID (column names -> values).
@@ -105,7 +105,7 @@ class PubChemCompounds:
             rows.append({col: cell for col, cell in zip(columns, cells)})
         return rows
 
-    # -- similarity --------------------------------------------------------------
+
 
     def similarity_cids(self, smiles: str, threshold: int = 90,
                         max_records: int = 50) -> list[int]:
@@ -129,7 +129,7 @@ class PubChemCompounds:
             return []
         return list(payload.get("IdentifierList", {}).get("CID", []))
 
-    # -- GHS safety ----------------------------------------------------------------
+
 
     def ghs_classification(self, cid: int) -> dict | None:
         """GHS classification parsed from PUG-View (None when absent).

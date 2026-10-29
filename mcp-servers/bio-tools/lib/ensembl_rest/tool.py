@@ -32,7 +32,7 @@ class EnsemblRest:
     def __init__(self, client: EnsemblClient | None = None):
         self.client = client or EnsemblClient()
 
-    # ------------------------------------------------------------ lookup --
+
     def lookup_symbol(self, species: str, symbol: str, expand: bool = False,
                       max_retries: int | None = None):
         """GET /lookup/symbol/:species/:symbol -> record dict | None."""
@@ -57,7 +57,7 @@ class EnsemblRest:
                 return None
             raise
 
-    # ------------------------------------------------------------- xrefs --
+
     def xrefs_id(self, stable_id: str, external_db: str | None = None):
         """GET /xrefs/id/:id -> list of cross-reference dicts ([] for
         unknown IDs — upstream 400s "ID ... not found", mapped like the
@@ -73,7 +73,7 @@ class EnsemblRest:
                 return []
             raise
 
-    # --------------------------------------------------------------- vep --
+
     def vep_id(self, species: str, variant_id: str):
         """GET /vep/:species/id/:id -> list of VEP result dicts."""
         return self.client.get(f"/vep/{_seg(species)}/id/{_seg(variant_id)}")
@@ -82,7 +82,7 @@ class EnsemblRest:
         """GET /vep/:species/region/:region/:allele -> list of VEP dicts."""
         return self.client.get(f"/vep/{_seg(species)}/region/{_seg(region)}/{_seg(allele)}")
 
-    # ---------------------------------------------------------- homology --
+
     def homology_id(self, species: str, gene_id: str, homology_type: str,
                     target_species: str | None = None,
                     target_taxon: int | None = None):
@@ -98,16 +98,16 @@ class EnsemblRest:
                 f"/homology/id/{_seg(species)}/{_seg(gene_id)}",
                 params=params).get("data") or []
         except EnsemblApiError as exc:
-            # Stale/retired ENSG ids answer 400 "No valid lookup found" —
-            # soft-return like every sibling ID lookup in this file
-            # (lookup_id/sequence_id -> None, xrefs_id -> []); review
-            # 3405875775.
+
+
+
+
             if _is_not_found(exc):
                 return []
             raise
         return data[0].get("homologies", []) if data else []
 
-    # ---------------------------------------------------------- sequence --
+
     def sequence_id(self, stable_id: str, seq_type: str = "genomic"):
         """GET /sequence/id/:id -> {id, seq, molecule, ...} | None."""
         try:
@@ -122,7 +122,7 @@ class EnsemblRest:
         """GET /sequence/region/:species/:region -> {id, seq, ...}."""
         return self.client.get(f"/sequence/region/{_seg(species)}/{_seg(region)}")
 
-    # ----------------------------------------------------------- overlap --
+
     def overlap_region(self, species: str, region: str, feature: str):
         """GET /overlap/region/:species/:region -> complete feature list
         (Ensembl itself rejects spans > 5 Mb with HTTP 400)."""

@@ -18,7 +18,7 @@ import hashlib
 import json
 from typing import Any, Iterable
 
-# Scalar fields copied verbatim from the API's target representation.
+
 TARGET_SCALAR_FIELDS = (
     "target_chembl_id",
     "pref_name",
@@ -28,7 +28,7 @@ TARGET_SCALAR_FIELDS = (
     "species_group_flag",
 )
 
-# Scalar fields copied verbatim from the nested target_component representation.
+
 COMPONENT_SCALAR_FIELDS = (
     "accession",
     "component_id",

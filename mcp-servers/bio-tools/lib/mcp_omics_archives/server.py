@@ -26,16 +26,17 @@ from functools import lru_cache
 from typing import Any
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import none_if_blank, reject_blank
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
-# Fleet retrieval functions (monkeypatched in offline tests).
+
 from arrayexpress_experiments import (
     SearchSpec,
     fetch_experiment,
@@ -61,10 +62,12 @@ from pride_projects import (
 
 from . import marshal
 
-mcp = FastMCP("mcp-omics-archives")
 
 
-# One client per backend per process; fleet clients pace and retry internally.
+mcp = GuardedFastMCP("mcp-omics-archives")
+
+
+
 @lru_cache(maxsize=1)
 def _ae_client():
     from arrayexpress_experiments import BioStudiesClient
@@ -102,9 +105,9 @@ def _cap(records: list, max_returned: int | None) -> tuple[list, bool]:
     return records, False
 
 
-# --------------------------------------------------------------------------- #
-# ArrayExpress (arrayexpress-experiments)
-# --------------------------------------------------------------------------- #
+
+
+
 @mcp.tool(annotations=READ_ONLY)
 def arrayexpress_search_experiments(
     query: str | None = None,
@@ -133,6 +136,10 @@ def arrayexpress_search_experiments(
     (accession, title, release_date, files, links, is_public) in deterministic
     release-date order; fetch detail with arrayexpress_get_experiment.
     """
+
+
+    reject_blank(extra_facets, query=query, organism=organism,
+                 study_type=study_type, technology=technology)
     spec = SearchSpec(
         query=query,
         organism=organism,
@@ -199,9 +206,9 @@ def arrayexpress_get_experiment_samples(
     return out
 
 
-# --------------------------------------------------------------------------- #
-# GEO (geo-meta; NCBI E-utilities db=gds + targeted SOFT headers)
-# --------------------------------------------------------------------------- #
+
+
+
 @mcp.tool(annotations=READ_ONLY)
 def geo_search_series(term: str, retmax: int = 500) -> dict[str, Any]:
     """Search NCBI GEO DataSets (db=gds) and return series-level records.
@@ -217,6 +224,10 @@ def geo_search_series(term: str, retmax: int = 500) -> dict[str, Any]:
     BioProject, PubMed ids). Call geo_get_series for full per-sample
     characteristics. Requests go through NCBI E-utilities at a polite pace.
     """
+
+
+
+    reject_blank(term=term)
     return search_series(term, client=_geo_client(), retmax=retmax)
 
 
@@ -240,9 +251,9 @@ def geo_get_series(accessions: list[str]) -> dict[str, Any]:
     return {"n_requested": len(accessions), "records": records}
 
 
-# --------------------------------------------------------------------------- #
-# MetaboLights (metabolights-meta)
-# --------------------------------------------------------------------------- #
+
+
+
 @mcp.tool(annotations=READ_ONLY)
 def metabolights_list_studies() -> dict[str, Any]:
     """List every public MetaboLights study accession.
@@ -343,10 +354,13 @@ def metabolights_search_data_files(
     return search_data_files(accession, pattern=pattern, client=_mtbls_client())
 
 
-# --------------------------------------------------------------------------- #
-# MGnify (mgnify-studies)
-# --------------------------------------------------------------------------- #
-@mcp.tool(annotations=READ_ONLY)
+
+
+
+
+
+
+@mcp.tool(annotations=READ_ONLY, blank_as_absent={"query", "biome_lineage"})
 def mgnify_search_studies(
     query: str | None = None,
     biome_lineage: str | None = None,
@@ -364,6 +378,12 @@ def mgnify_search_studies(
     count, centre name, ENA/BioProject accessions. Use mgnify_get_studies /
     mgnify_get_study_analyses for detail.
     """
+
+
+
+
+    query = none_if_blank(query)
+    biome_lineage = none_if_blank(biome_lineage)
     if (query is None) == (biome_lineage is None):
         raise ValueError("provide exactly one of 'query' or 'biome_lineage'")
     spec = ({"type": "search", "query": query} if query is not None
@@ -403,9 +423,9 @@ def mgnify_get_study_analyses(accession: str) -> dict[str, Any]:
     return fetch_study_analyses(accession, client=_mgnify_client())
 
 
-# --------------------------------------------------------------------------- #
-# PRIDE (pride-projects)
-# --------------------------------------------------------------------------- #
+
+
+
 @mcp.tool(annotations=READ_ONLY)
 def pride_search_projects(
     keyword: str | None = None,
@@ -436,6 +456,11 @@ def pride_search_projects(
     records (records_truncated=true when capped; api_total always carries the
     true count).
     """
+
+
+
+    reject_blank(extra_filters, keyword=keyword, organism=organism,
+                 instrument=instrument, disease=disease)
     spec: dict[str, Any] = {}
     if keyword:
         spec["keyword"] = keyword
@@ -447,11 +472,11 @@ def pride_search_projects(
         spec["disease"] = disease
     if extra_filters:
         spec["extra_filters"] = extra_filters
-    # Bound the FETCH by the caller's cap, not just the output (stress-test
-    # finding: a broad keyword walked thousands of paced pages). Upstream
-    # sorts by accession ASC, so a bounded walk is a stable prefix; api_total
-    # still carries the true count and records_truncated flags the cap.
-    max_pages = max(1, -(-max_records_returned // 100))  # ceil(cap / PAGE_SIZE)
+
+
+
+
+    max_pages = max(1, -(-max_records_returned // 100))
     result = search_projects(_pride_client(), spec, max_pages=max_pages)
     complete = result.get("complete", True)
     records, capped = _cap(result.get("records", []), max_records_returned)
@@ -506,6 +531,11 @@ def pride_search_project_proteins(
     PRIDE — use pride_find_projects_for_protein for the protein→projects
     direction instead.
     """
+
+
+
+
+    reject_blank(keyword=keyword)
     return search_project_proteins(project_accession, keyword=keyword,
                                    client=_pride_client())
 
@@ -524,10 +554,10 @@ def pride_find_projects_for_protein(protein_accession: str) -> dict[str, Any]:
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

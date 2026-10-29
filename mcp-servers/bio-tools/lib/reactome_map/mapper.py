@@ -27,8 +27,8 @@ from .client import ReactomeClient
 
 VALID_ID_TYPES = ("symbol", "uniprot")
 
-#: keys that may vary between identical runs; everything outside ``provenance``
-#: must be byte-identical across runs (the accuracy gate enforces this).
+
+
 VOLATILE_TOP_LEVEL_KEYS = ("provenance",)
 
 
@@ -115,7 +115,7 @@ def map_identifiers(
     try:
         version = cl.database_version()
 
-        # --- 1. batched token-workflow submission (whole panel) -----------------
+
         batch = cl.analyse_identifiers(
             identifiers,
             sample_name=f"reactome-map batch ({id_type})",
@@ -155,7 +155,7 @@ def map_identifiers(
             "pathways": batch_pathways,
         }
 
-        # --- 2. per-identifier submissions (one pathway set per input) ----------
+
         genes: dict[str, Any] = {}
         per_gene_tokens: dict[str, str | None] = {}
         for ident in identifiers:

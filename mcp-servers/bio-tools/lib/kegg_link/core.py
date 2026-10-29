@@ -18,12 +18,12 @@ from urllib.parse import quote
 
 from .client import KeggClient
 
-LINK_CONV_BATCH_SIZE = 10  # documented KEGG REST limit for /link and /conv
+LINK_CONV_BATCH_SIZE = 10
 
-# Tidy mapping-table column order (provenance columns included).
-# ``request_index`` points into the request manifest (``LinkResult.request_paths``,
-# emitted once as "# request[i]" comment lines by ``to_tsv``) so the full batched URL
-# is not repeated on every row.
+
+
+
+
 COLUMNS = [
     "source_id",
     "source_db",
@@ -35,9 +35,9 @@ COLUMNS = [
 ]
 
 
-# ---------------------------------------------------------------------------------
-# Parsing helpers (pure functions; offline-testable)
-# ---------------------------------------------------------------------------------
+
+
+
 
 def split_prefix(kegg_id: str) -> tuple[str, str]:
     """Split a prefixed KEGG identifier into (database, local id).
@@ -107,19 +107,19 @@ def _normalise_query_id(returned_id: str, query_ids: list[str]) -> str:
     return returned_id
 
 
-# ---------------------------------------------------------------------------------
-# Result container
-# ---------------------------------------------------------------------------------
+
+
+
 
 @dataclass
 class LinkResult:
     """Tidy mapping table plus provenance for one batched /link or /conv operation."""
 
-    operation: str               # "link" or "conv"
-    target_db: str               # e.g. "pathway", "rn", "hsa", "ncbi-geneid"
-    query_ids: list[str]         # input IDs in the order given
+    operation: str
+    target_db: str
+    query_ids: list[str]
     records: list[dict] = field(default_factory=list)
-    missing_ids: list[str] = field(default_factory=list)  # inputs with zero hits
+    missing_ids: list[str] = field(default_factory=list)
     request_paths: list[str] = field(default_factory=list)
 
     def per_id_targets(self) -> dict[str, list[str]]:
@@ -163,9 +163,9 @@ def canonicalize_records(records: list[dict]) -> list[tuple]:
     return sorted(keyed)
 
 
-# ---------------------------------------------------------------------------------
-# Batched operations
-# ---------------------------------------------------------------------------------
+
+
+
 
 def _run_two_column_op(
     client: KeggClient,
@@ -178,7 +178,7 @@ def _run_two_column_op(
         raise ValueError(f"unsupported operation: {op!r}")
     if not ids:
         raise ValueError("ids must be a non-empty list")
-    # Preserve caller order but drop duplicates deterministically.
+
     seen: set[str] = set()
     ordered_ids = [i for i in ids if not (i in seen or seen.add(i))]
 
@@ -207,7 +207,7 @@ def _run_two_column_op(
                 }
             )
 
-    # Deterministic order: input order, then target_id.
+
     raw_records.sort(key=lambda r: (order_index.get(r["source_id"], len(order_index)), r["target_id"]))
     result.records = raw_records
 
@@ -254,9 +254,9 @@ def find(client: KeggClient, database: str, query: str) -> list[dict]:
     return parse_find(text)
 
 
-# ---------------------------------------------------------------------------------
-# Symbol -> KEGG gene ID resolution (closes bc_get_kegg_id_by_gene_symbol)
-# ---------------------------------------------------------------------------------
+
+
+
 
 def parse_gene_symbols(description: str) -> list[str]:
     """Symbol list from a /find/<org> gene row description.

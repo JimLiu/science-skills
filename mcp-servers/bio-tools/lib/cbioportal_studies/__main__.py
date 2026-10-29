@@ -12,11 +12,11 @@ def main(argv=None):
               file=sys.stderr)
         return 2
     method, *pairs = argv
-    # Typed coercion (finding 3406476451): blanket isdigit()→int broke
-    # digit-shaped strings (Entrez gene_symbol "7157" → int → .strip()
-    # AttributeError), and comma-only list splitting left a single-element
-    # study_ids as a string (iterated per character downstream). Coerce by
-    # parameter name, not by value shape.
+
+
+
+
+
     INT_PARAMS = {"max_records", "entrez_gene_id"}
     LIST_PARAMS = {"study_ids"}
     kwargs = {}

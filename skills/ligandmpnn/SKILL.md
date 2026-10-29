@@ -31,18 +31,60 @@ original ProteinMPNN script, it threads designs back onto the input structure
 and writes PDBs alongside the FASTA. Code and weights are MIT
 (github.com/dauparas/LigandMPNN). The model is small enough to run on CPU —
 for a handful of designs on one structure that is seconds and usually faster
-than dispatching, so the normal path is local with
-`pip install torch numpy biopython ProDy ml_collections dm-tree`; a GPU helps
+than dispatching, so the normal path is local (pinned recipe below); a GPU helps
 for batched campaigns.
 
 ## Running it
 
 ```bash
-pip install torch numpy biopython ProDy ml_collections dm-tree
-git clone --depth 1 https://github.com/dauparas/LigandMPNN.git ligandmpnn
-cd ligandmpnn
-sed -i 's/np\.int\b/np.int64/g' openfold/np/residue_constants.py   # repo pins numpy 1.23; alias removed in >=1.24
+# niche deps + SHA pinned for supply-chain hygiene — bump via PR. SHA matches env-setup.md
+# Pattern (a); torch/numpy left unpinned (already in the local kernel — pinning would downgrade).
+pip install torch numpy biopython==1.87 ProDy==2.6.1 ml_collections==1.1.0 dm-tree==0.1.10
+git clone https://github.com/dauparas/LigandMPNN.git ligandmpnn
+# One command: if the clone or the pinned checkout fails the cell stops here — do not
+# cd in by hand then: the steps below would run on unpinned code.
+git -C ligandmpnn checkout 26ec57ac976ade5379920dbd43c7f97a91cf82de && cd ligandmpnn || exit 1
+# repo pins numpy 1.23; the np.int alias is gone in >=1.24 (python, not sed -i: the same on macOS and Linux)
+python -c "import re, pathlib; p = pathlib.Path('openfold/np/residue_constants.py'); p.write_text(re.sub(r'np\.int\b', 'np.int64', p.read_text()))"
 bash get_model_params.sh ./model_params
+# the checkpoints are unsigned pickles fetched with no checksum (and a torch older
+# than 2.6 runs a pickle's code on load): verify all 15 before run.py loads any —
+# a mismatched or truncated file is renamed aside (*.rejected, *.rejected.1, …) and the cell stops
+# here, so nothing below runs on it ("|| exit 1" ends a script or tool cell; pasted into
+# an interactive shell it would close that shell — drop it there and stop by hand on an error)
+# (digests: remote-compute-modal/env-setup.md, Pattern (a) — the same table)
+python - <<'EOF' || exit 1
+import hashlib, pathlib, sys
+if not pathlib.Path("run.py").is_file():   # only ever inside the LigandMPNN clone
+    sys.exit("not inside the LigandMPNN clone — nothing checked, nothing renamed or removed")
+want = {
+    "global_label_membrane_mpnn_v_48_020.pt": "89ef0abddbfb956c4c7c02dcba6523c0b5152733055f7509292365eaecc38b21",
+    "ligandmpnn_sc_v_32_002_16.pt": "799a9de6c1c72bb0c7ceb37998391a6fd0e3e21cb42928ee31a28313a3b1b46a",
+    "ligandmpnn_v_32_005_25.pt": "ee07a7afb53bce98a0b1d33996bbe3b46b0831df5ce0684d3cbd55eed1aa9263",
+    "ligandmpnn_v_32_010_25.pt": "161cd264061fda9680cbb940255522ae42f2966c552d045d87913d9452a80970",
+    "ligandmpnn_v_32_020_25.pt": "42caaa5cdb380867d2b31c30de4ab53ea89171279b3a0732ddf94bc4d3cb6981",
+    "ligandmpnn_v_32_030_25.pt": "ed13e130787f70b6c385efba56949220d16a1d1a98073ada3002b3701a6a8ecf",
+    "per_residue_label_membrane_mpnn_v_48_020.pt": "1e62e193bee12f1b64fff87ae3ca9da95b0f60b15839ae3cbe48e4983ef055ba",
+    "proteinmpnn_v_48_002.pt": "925f2ca1007bf9b02e0e7f420ff00eb91f50fcc2722f64b42e644ae95adaa131",
+    "proteinmpnn_v_48_010.pt": "db866fae956a28661f926053d630610c55e9fc4bc03922f2aeeb98a37435ccce",
+    "proteinmpnn_v_48_020.pt": "c9cb4a671d79604111231f8dbfc7c590e06f1197453b7a6854ac6661a642f5bd",
+    "proteinmpnn_v_48_030.pt": "c34b7bfb38418ea30989fda3314f4781ac4e3920f9825731cf555f1fed44ac66",
+    "solublempnn_v_48_002.pt": "0877f840978fe770be6fcec025784d8f50c438571db3260c05e41aa207a7c448",
+    "solublempnn_v_48_010.pt": "79562f7444f72c84595a1c96010713864865a616f4f3967633493041e169fa6e",
+    "solublempnn_v_48_020.pt": "7af52d090172c230c7f0e9d21e02203f6b3a38b16db58d3c7a3960e0a9a6e31a",
+    "solublempnn_v_48_030.pt": "1dd63f1e9fc68a133cc9ef859edf43b489e5ac581cb5624e0b9ec848ff062421",
+}
+bad = [f for f, d in want.items()
+       if not (p := pathlib.Path("model_params", f)).is_file()
+       or hashlib.sha256(p.read_bytes()).hexdigest() != d]
+aside = []   # never leave a mismatched pickle where run.py would load it: set it aside under a free name, unloadable but not deleted
+for f in bad:
+    if (p := pathlib.Path("model_params", f)).is_file():
+        q, n = p.with_name(p.name + ".rejected"), 1
+        while q.exists(): q, n = p.with_name(f"{p.name}.rejected.{n}"), n + 1
+        p.rename(q); aside.append(q.name)
+sys.exit(f"checkpoint digest mismatch or missing: {bad} (set aside as: {aside}) — refetch with 'bash get_model_params.sh ./model_params', then rerun this check before run.py" if bad else 0)
+EOF
 python run.py \
   --model_type ligand_mpnn \
   --checkpoint_ligand_mpnn ./model_params/ligandmpnn_v_32_010_25.pt \
@@ -112,10 +154,11 @@ not trust the sequences.
 
 | You see | It means / do this |
 |---|---|
-| `ModuleNotFoundError: No module named 'tree'` | `pip install dm-tree` — the vendored openfold imports it unconditionally. |
-| `module 'numpy' has no attribute 'int'` | Run the `sed` patch on `openfold/np/residue_constants.py`, or pin `numpy<1.24` (py≤3.11 only). |
+| `ModuleNotFoundError: No module named 'tree'` | `pip install dm-tree==0.1.10` — the vendored openfold imports it unconditionally. |
+| `module 'numpy' has no attribute 'int'` | Run the numpy patch line (the `python -c` one-liner above) on `openfold/np/residue_constants.py`, or pin `numpy<1.24` (py≤3.11 only). |
 | `error: command 'clang' failed` while `pip install ProDy` | See the ProDy gotcha above — `apt_install("build-essential")` and `env({"CC":"gcc","CXX":"g++"})`. |
-| `FileNotFoundError` for `model_params/...` | Checkpoints not fetched — run `bash get_model_params.sh ./model_params` from inside the clone. |
+| `FileNotFoundError` for `model_params/...` | Checkpoints not fetched (or set aside by the check as `*.rejected`, `*.rejected.1`, …) — run `bash get_model_params.sh ./model_params` from inside the clone, then the verification block above, before `run.py`. |
+| `checkpoint digest mismatch or missing: [...]` | A `.pt` is missing or did not match its pinned sha256 (truncated download, or the file changed upstream; a mismatched copy is renamed to `*.rejected` — or `*.rejected.1`, … if that name is taken — not deleted) — rerun `bash get_model_params.sh ./model_params` and then the verification block, before `run.py`; if it persists, stop and report it rather than loading the file. On a Mac without `wget`, `get_model_params.sh` itself fetches nothing (install wget first). |
 
 ---
 

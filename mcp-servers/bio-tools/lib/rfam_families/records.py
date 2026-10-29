@@ -73,8 +73,8 @@ def _float(v):
         return None
 
 
-# --------------------------------------------------------------------- #
-# regions TSV
+
+
 
 REGION_COLUMNS = [
     "sequence_accession", "bits_score", "region_start", "region_end",
@@ -113,8 +113,8 @@ def regions_data_lines(tsv_text: str) -> list[str]:
     return [l for l in tsv_text.splitlines() if l.strip() and not l.startswith("#")]
 
 
-# --------------------------------------------------------------------- #
-# alignments
+
+
 
 def parse_stockholm_seq_names(stockholm_text: str) -> list[str]:
     """Unique sequence names from a Stockholm alignment, in first-seen order."""
@@ -135,8 +135,8 @@ def parse_fasta_seq_names(fasta_text: str) -> list[str]:
             if l.startswith(">")]
 
 
-# --------------------------------------------------------------------- #
-# covariance model
+
+
 
 def parse_cm_header(cm_text: str) -> dict:
     """Key header fields from an Infernal CM file (1.1.x format).
@@ -162,8 +162,8 @@ def parse_cm_header(cm_text: str) -> dict:
     return fields
 
 
-# --------------------------------------------------------------------- #
-# structure mapping
+
+
 
 def sort_structure_mapping(mapping: list[dict]) -> list[dict]:
     """Stable order for the /structures rows (server order is volatile)."""

@@ -71,7 +71,7 @@ def _parse_mesh(article_el: ET.Element) -> list[str]:
 def parse_article(article_el: ET.Element) -> dict:
     """Parse a single <PubmedArticle> element into a structured record."""
     if article_el.tag == "PubmedArticleSet":
-        # convenience: accept a set wrapping a single article
+
         children = list(article_el)
         if len(children) != 1:
             raise ValueError("parse_article expects a single article element")

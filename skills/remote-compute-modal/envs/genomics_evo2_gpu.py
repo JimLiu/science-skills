@@ -14,9 +14,9 @@ import modal
 META = {
     "packages": ["evo2", "torch", "flash_attn"],
     "gpu_default": "H100",
-    # JOB-time only (see proteomics_jax_gpu for the field contract): weights
-    # are hydrated and HF_HUB_OFFLINE=1 is baked (an un-hydrated volume fails
-    # fast offline instead of pulling ~28 GB at job time).
+
+
+
     "egress_domains": [],
 }
 
@@ -56,20 +56,20 @@ def build(
     return img, vols, dict(_ENV)
 
 
-# `env HF_HUB_OFFLINE=0` is load-bearing: the image bakes HF_HUB_OFFLINE=1
-# so fenced JOBS never reach the Hub (and an empty volume fails fast and
-# attributably), while this one-time prefetch — which runs in the trusted
-# compute_provider kernel, not the fenced job sandbox — must be online.
+
+
+
+
 HYDRATE = (
     "env",
     "HF_HUB_OFFLINE=0",
     "python",
     "-c",
-    # revision= pin (HF commit SHA, 2026-06-28) — same posture as esmfold2.
-    # The refs/main write is load-bearing: snapshot_download(revision=<SHA>)
-    # writes no refs/ entry, but the job image bakes HF_HUB_OFFLINE=1 and the
-    # documented load Evo2('evo2_7b') resolves the default 'main' revision,
-    # which offline needs refs/main -> pinned SHA in the cache.
+
+
+
+
+
     "from huggingface_hub import snapshot_download; "
     "from huggingface_hub.constants import HF_HUB_CACHE; "
     "import pathlib; "

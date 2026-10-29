@@ -17,7 +17,7 @@ from mcp_servers_common.ratelimit import retry_after_seconds
 SEARCH_URL = "https://search.rcsb.org/rcsbsearch/v2/query"
 DATA_BASE_URL = "https://data.rcsb.org/rest/v1/core"
 USER_AGENT = "pdb-structures/0.1 (bio-tools fleet; python-httpx)"
-MIN_INTERVAL_S = 0.5          # <= 2 req/s per host
+MIN_INTERVAL_S = 0.5
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
@@ -46,7 +46,7 @@ class PDBClient:
         self.max_retries = max_retries
         self.min_interval_s = min_interval_s
         self._last_request_t: dict[str, float] = {}
-        # accounting
+
         self.request_count = 0
         self.bytes_downloaded = 0
         self._client = httpx.Client(
@@ -55,7 +55,7 @@ class PDBClient:
             transport=transport,
         )
 
-    # ------------------------------------------------------------------ #
+
     def close(self) -> None:
         self._client.close()
 
@@ -65,7 +65,7 @@ class PDBClient:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    # ------------------------------------------------------------------ #
+
     def _throttle(self, host: str) -> None:
         elapsed = time.monotonic() - self._last_request_t.get(host, 0.0)
         if elapsed < self.min_interval_s:
@@ -92,7 +92,7 @@ class PDBClient:
 
             if resp.status_code == 200:
                 return resp
-            if resp.status_code == 204:       # search API: zero results
+            if resp.status_code == 204:
                 return None
             if resp.status_code == 404:
                 raise NotFoundError(f"not found: {url}")
@@ -105,7 +105,7 @@ class PDBClient:
             raise PDBError(f"HTTP {resp.status_code} for {url}: {resp.text[:300]}")
         raise PDBError(f"retries exhausted for {url}: {last_err}")
 
-    # ------------------------------------------------------------------ #
+
     def get_data(self, *segments: str) -> dict:
         """GET a data-API core resource, e.g. ``get_data("entry", "1TUP")``.
 
@@ -115,7 +115,7 @@ class PDBClient:
         path = "/".join(urllib.parse.quote(str(s), safe="") for s in segments)
         url = f"{self.data_base_url}/{path}"
         resp = self._request("GET", url)
-        if resp is None:                      # data API never returns 204 in practice
+        if resp is None:
             raise PDBError(f"empty response for {url}")
         return resp.json()
 

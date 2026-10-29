@@ -37,7 +37,7 @@ class NotFound(GwasApiError):
 class TransportStats:
     requests: int = 0
     bytes_downloaded: int = 0
-    raw_bodies: list = field(default_factory=list)  # populated only when capture_raw=True
+    raw_bodies: list = field(default_factory=list)
 
 
 class GwasClient:
@@ -51,7 +51,7 @@ class GwasClient:
         self.base_url = base_url.rstrip("/")
         self.min_interval_s = min_interval_s
         self.timeout_s = timeout_s
-        self.max_retries = max_retries  # total attempts (2 == one retry)
+        self.max_retries = max_retries
         self.capture_raw = capture_raw
         self.session = session or requests.Session()
         self.session.headers.update({"Accept": "application/json",
@@ -59,10 +59,10 @@ class GwasClient:
         self.stats = TransportStats()
 
     def _throttle(self) -> None:
-        # PROCESS-wide per-host pacing via the shared HostPacer (review
-        # 3399242283): all EBI-facing clients in the one-process aggregate
-        # share one www.ebi.ac.uk budget instead of stacking per-instance
-        # clocks — same abstraction as the NCBI fix (3393212445).
+
+
+
+
         pace(BASE_URL, self.min_interval_s)
 
     def get_json(self, path: str, params: dict | None = None):
@@ -76,9 +76,9 @@ class GwasClient:
             self._throttle()
             try:
                 resp = self.session.get(url, params=params, timeout=self.timeout_s)
-            except requests.RequestException as exc:      # connection / timeout
+            except requests.RequestException as exc:
                 last_err = exc
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2 ** attempt, 4))
                 continue
             self.stats.requests += 1
@@ -89,7 +89,7 @@ class GwasClient:
                 last_err = GwasApiError(f"HTTP {resp.status_code} for {url}")
                 retry_after = resp.headers.get("Retry-After", "")
                 delay = retry_after_seconds(retry_after, min(2 ** attempt, 4), cap=5.0)
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(delay)
                 continue
             if resp.status_code != 200:

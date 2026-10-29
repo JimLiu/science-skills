@@ -19,7 +19,7 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
     holdout = data.get("holdout", 0)
     title_prefix = html.escape(skill_name + " \u2014 ") if skill_name else ""
 
-    # Get all unique queries from train and test sets, with should_trigger info
+
     train_queries: list[dict] = []
     test_queries: list[dict] = []
     if history:
@@ -152,7 +152,7 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
     </div>
 """]
 
-    # Summary section
+
     best_test_score = data.get('best_test_score')
     best_train_score = data.get('best_train_score')
     html_parts.append(f"""
@@ -164,7 +164,7 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
     </div>
 """)
 
-    # Legend
+
     html_parts.append("""
     <div class="legend">
         <span style="font-weight:600">Query columns:</span>
@@ -175,7 +175,7 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
     </div>
 """)
 
-    # Table header
+
     html_parts.append("""
     <div class="table-container">
     <table>
@@ -187,12 +187,12 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
                 <th class="query-col">Description</th>
 """)
 
-    # Add column headers for train queries
+
     for qinfo in train_queries:
         polarity = "positive-col" if qinfo["should_trigger"] else "negative-col"
         html_parts.append(f'                <th class="{polarity}">{html.escape(qinfo["query"])}</th>\n')
 
-    # Add column headers for test queries (different color)
+
     for qinfo in test_queries:
         polarity = "positive-col" if qinfo["should_trigger"] else "negative-col"
         html_parts.append(f'                <th class="test-col {polarity}">{html.escape(qinfo["query"])}</th>\n')
@@ -202,13 +202,13 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
         <tbody>
 """)
 
-    # Find best iteration for highlighting
+
     if test_queries:
         best_iter = max(history, key=lambda h: h.get("test_passed") or 0).get("iteration")
     else:
         best_iter = max(history, key=lambda h: h.get("train_passed", h.get("passed", 0))).get("iteration")
 
-    # Add rows for each iteration
+
     for h in history:
         iteration = h.get("iteration", "?")
         train_passed = h.get("train_passed", h.get("passed", 0))
@@ -219,11 +219,11 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
         train_results = h.get("train_results", h.get("results", []))
         test_results = h.get("test_results", [])
 
-        # Create lookups for results by query
+
         train_by_query = {r["query"]: r for r in train_results}
         test_by_query = {r["query"]: r for r in test_results} if test_results else {}
 
-        # Compute aggregate correct/total runs across all retries
+
         def aggregate_runs(results: list[dict]) -> tuple[int, int]:
             correct = 0
             total = 0
@@ -240,7 +240,7 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
         train_correct, train_runs = aggregate_runs(train_results)
         test_correct, test_runs = aggregate_runs(test_results)
 
-        # Determine score classes
+
         def score_class(correct: int, total: int) -> str:
             if total > 0:
                 ratio = correct / total
@@ -262,7 +262,7 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
                 <td class="description">{html.escape(description)}</td>
 """)
 
-        # Add result for each train query
+
         for qinfo in train_queries:
             r = train_by_query.get(qinfo["query"], {})
             did_pass = r.get("pass", False)
@@ -274,7 +274,7 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
 
             html_parts.append(f'                <td class="result {css_class}">{icon}<span class="rate">{triggers}/{runs}</span></td>\n')
 
-        # Add result for each test query (with different background)
+
         for qinfo in test_queries:
             r = test_by_query.get(qinfo["query"], {})
             did_pass = r.get("pass", False)

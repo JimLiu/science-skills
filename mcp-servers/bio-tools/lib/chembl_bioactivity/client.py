@@ -10,12 +10,12 @@ from mcp_servers_common.ratelimit import CappedRetry
 from requests.adapters import HTTPAdapter
 
 DEFAULT_BASE_URL = "https://www.ebi.ac.uk/chembl/api/data"
-DEFAULT_PAGE_SIZE = 1000          # vs the legacy client's 20
-DEFAULT_TIMEOUT = 60.0            # seconds per request
-DEFAULT_POLITENESS_DELAY = 0.21   # seconds between page requests (<5 req/s, EBI shared-host rule)
-MAX_IDS_PER_IN_FILTER = 200       # keeps __in URLs well under typical URL-length limits
+DEFAULT_PAGE_SIZE = 1000
+DEFAULT_TIMEOUT = 60.0
+DEFAULT_POLITENESS_DELAY = 0.21
+MAX_IDS_PER_IN_FILTER = 200
 
-# resource name -> (collection key in the JSON response, deterministic sort key)
+
 RESOURCES = {
     "molecule": ("molecules", "molecule_chembl_id"),
     "activity": ("activities", "activity_id"),
@@ -76,8 +76,8 @@ class ChEMBLClient:
             self.session = session
         else:
             self.session = requests.Session()
-            # CappedRetry not Retry: urllib3 honours Retry-After with no
-            # ceiling (review on #2875 — same class as the hand-rolled loops).
+
+
             retry = CappedRetry(
                 total=max_retries,
                 backoff_factor=backoff_factor,
@@ -92,9 +92,9 @@ class ChEMBLClient:
             {"Accept": "application/json", "User-Agent": user_agent}
         )
 
-    # ------------------------------------------------------------------ #
-    # low-level                                                          #
-    # ------------------------------------------------------------------ #
+
+
+
     def _get(self, resource: str, params: dict) -> dict:
         """One GET against <base>/<resource>.json; updates instrumentation."""
         url = f"{self.base_url}/{resource}.json"
@@ -119,7 +119,7 @@ class ChEMBLClient:
         collection_key, sort_key = RESOURCES[resource]
         base_params = dict(params)
         base_params["limit"] = self.page_size
-        # server-side ordering keeps offset paging stable while the result set is large
+
         base_params.setdefault("order_by", sort_key)
         if fields:
             base_params["only"] = ",".join(fields)
@@ -143,7 +143,7 @@ class ChEMBLClient:
             raise RuntimeError(
                 f"{resource}: collected {len(records)} records but page_meta.total_count={total}"
             )
-        # deterministic client-side ordering regardless of server behaviour
+
         records.sort(key=lambda r: (r.get(sort_key) is None, r.get(sort_key)))
         return records
 
@@ -151,9 +151,9 @@ class ChEMBLClient:
     def _chunks(items: list[str], size: int) -> list[list[str]]:
         return [items[i : i + size] for i in range(0, len(items), size)]
 
-    # ------------------------------------------------------------------ #
-    # public API                                                         #
-    # ------------------------------------------------------------------ #
+
+
+
     def get_molecules(self, chembl_ids: list[str], fields: list[str] | None = None) -> list[dict]:
         """Molecule records for an explicit list of ChEMBL IDs (batched __in filter)."""
         records: list[dict] = []

@@ -5,7 +5,7 @@ description: >
   sequence with Borzoi. Use this skill when:
   (1) Scoring the regulatory effect of a variant on expression/accessibility,
   (2) Generating predicted coverage tracks for a locus,
-  (3) Prioritising non-coding variants by predicted track delta.
+  (3) Prioritizing non-coding variants by predicted track delta.
 license: Apache-2.0
 category: biomodels
 requirements: [gpu]
@@ -47,7 +47,7 @@ Borzoi consumes ~524 kb one-hot windows and emits binned predictions across
 7,611 human tracks (the separate 2,608-track mouse head is off by default;
 enable via `enable_mouse_head=True` and select with
 `forward(..., is_human=False)`). For variant scoring, run ref/alt windows
-centred on the variant and compare per-track output.
+centered on the variant and compare per-track output.
 
 ## Output format
 
@@ -65,23 +65,23 @@ environment with `borzoi-pytorch`, then:
 c = host.compute.create(provider)
 job = c.submit_job(
     intent="Borzoi track prediction for 1 locus — 1×GPU, ~2 min",
-    inputs=[{"src": "borzoi_run.py", "dst_filename": "borzoi_run.py"}],
+    inputs=["borzoi_run.py"],
     command="python3 borzoi_run.py",   # env selection is host-specific — see compute_details for your provider
     outputs=["tracks.npz"],
-    timeout_seconds=1800,
+    run_timeout_s=1800,
 )
-print(job.job_id)   # cell ends here — kernel never blocks on compute
+# the Job repr just printed itself (id, notes) — cell ends here; the kernel never waits on the job
 ```
 
 Then call the `wait_for_notification` brain-tool. When the
 `compute_done` notification arrives, act on its payload:
 
 ```python
-save_artifacts(payload["featured_files"])   # paths under hpc/<job_id>/
+save_artifacts(payload["output_files"])   # paths under hpc/<job_id>/
 ```
 
-For the full result dict (`output_files`, `remote_workdir`, …), re-enter the
-kernel: `c.attach_job(job_id).result()` then `c.close()`. See the
+For the full record (`files`, `stdout_tail`, `notes`, …), re-enter the
+kernel: `res = c.attach_job(job_id).result()` then `c.close(intent=...)`. See the
 `remote-compute-ssh` / `remote-compute-modal` skill for the orchestration
 details.
 
@@ -99,4 +99,4 @@ If the provider exposes a weight-cache mount, point `HF_HOME` at it inside
 ---
 
 **Next**: combine track deltas with `evo2` likelihood deltas for a
-two-axis variant prioritisation.
+two-axis variant prioritization.

@@ -27,9 +27,9 @@ GRAPH_DETAILS_PATH = "graph/interaction/details"
 GRAPH_PARTICIPANTS_PATH = "graph/participants/details"
 
 
-# --------------------------------------------------------------------------- #
-# Cv-term helper
-# --------------------------------------------------------------------------- #
+
+
+
 
 def _cv(node: Any) -> dict | None:
     """{'shortName': s, 'identifier': mi} -> {'name': s, 'mi': mi}."""
@@ -48,9 +48,9 @@ def _xref(node: dict) -> dict:
     }
 
 
-# --------------------------------------------------------------------------- #
-# intact_get_interactor
-# --------------------------------------------------------------------------- #
+
+
+
 
 def get_interactor(query: str, client: IntActClient | None = None) -> dict[str, Any]:
     """Standalone interactor detail for one query (UniProt accession, gene
@@ -79,9 +79,9 @@ def get_interactor(query: str, client: IntActClient | None = None) -> dict[str, 
             client.close()
 
 
-# --------------------------------------------------------------------------- #
-# intact_get_interaction_details
-# --------------------------------------------------------------------------- #
+
+
+
 
 def get_interaction_details(
     interaction_ac: str,
@@ -173,9 +173,9 @@ def get_interaction_details(
             client.close()
 
 
-# --------------------------------------------------------------------------- #
-# intact_get_interaction_network
-# --------------------------------------------------------------------------- #
+
+
+
 
 def build_network(
     seeds: list[str],
@@ -204,7 +204,7 @@ def build_network(
     if client is None:
         client = IntActClient()
     try:
-        seeds = list(dict.fromkeys(seeds))  # dedupe, keep order
+        seeds = list(dict.fromkeys(seeds))
         edges: dict[tuple, dict] = {}
         node_ids: set[str] = set(seeds)
         partner_degree: dict[str, int] = {}
@@ -227,7 +227,7 @@ def build_network(
                         node_ids.add(pid)
                         partner_degree[pid] = partner_degree.get(pid, 0) + 1
 
-        # deterministic expansion order: highest seed-degree first, then id
+
         expansion_order = sorted(partner_degree, key=lambda p: (-partner_degree[p], p))
         expanded = expansion_order[:max_interactors_expanded]
         not_expanded = expansion_order[max_interactors_expanded:]

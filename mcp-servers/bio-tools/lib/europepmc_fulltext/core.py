@@ -15,10 +15,10 @@ from .extract import extract_sections
 PMCID_RE = re.compile(r"^PMC\d+$", re.IGNORECASE)
 PMID_RE = re.compile(r"^\d+$")
 
-# how many IDs are OR-ed together in one /search availability query
+
 SEARCH_BATCH_SIZE = 8
 
-# fields copied from the /search core result into the availability record
+
 _SEARCH_FIELDS = {
     "id": "ext_id",
     "source": "source",
@@ -93,10 +93,16 @@ def check_availability(ids: list[str], client: EuropePMCClient | None = None) ->
     dropped.
     """
     client = client or EuropePMCClient()
-    typed = [(raw, classify_id(raw)) for raw in ids]
 
-    pmids = [raw for raw, t in typed if t == "pmid"]
-    pmcids = [raw for raw, t in typed if t == "pmcid"]
+
+
+
+
+
+    typed = [(raw, raw.strip(), classify_id(raw)) for raw in ids]
+
+    pmids = [rid for _, rid, t in typed if t == "pmid"]
+    pmcids = [rid for _, rid, t in typed if t == "pmcid"]
 
     by_pmid: dict[str, dict] = {}
     by_pmcid: dict[str, dict] = {}
@@ -123,11 +129,11 @@ def check_availability(ids: list[str], client: EuropePMCClient | None = None) ->
         _ingest(data.get("resultList", {}).get("result", []))
 
     records = []
-    for raw, id_type in typed:
+    for raw, rid, id_type in typed:
         if id_type == "pmid":
-            hit = by_pmid.get(raw)
+            hit = by_pmid.get(rid)
         elif id_type == "pmcid":
-            hit = by_pmcid.get(raw.upper())
+            hit = by_pmcid.get(rid.upper())
         else:
             rec = _not_found_record(raw, id_type)
             rec["error"] = "unrecognized id format (expected PMID digits or PMC#######)"
@@ -173,7 +179,7 @@ def fetch_articles(
     ``deadline_s`` bounds the per-article fullTextXML wall-clock: once it is
     exceeded, remaining OA articles are reported ``not_processed`` rather than
     risking the ~60s MCP transport budget and discarding already-fetched
-    records (mirrors the sibling ClinVar/dbsnp batch tools, finding 3406986062).
+    records (mirrors the sibling ClinVar/dbsnp batch tools).
     """
     client = client or EuropePMCClient()
     availability = check_availability(ids, client=client)
@@ -237,10 +243,10 @@ def fetch_articles(
             out.append(record)
             continue
 
-        # Deadline guard (finding 3406986062): stop fetching full text once
-        # the wall-clock budget is spent; remaining OA articles are reported
-        # not_processed instead of risking the transport budget and losing
-        # the records already assembled.
+
+
+
+
         if time.monotonic() >= _deadline:
             record["fulltext_status"] = "not_processed"
             record["detail"] = (

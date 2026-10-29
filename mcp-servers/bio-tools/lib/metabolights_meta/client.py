@@ -22,9 +22,9 @@ from typing import Any, Callable, Optional, Tuple
 
 DEFAULT_BASE_URL = "https://www.ebi.ac.uk/metabolights/ws"
 DEFAULT_TIMEOUT = 120.0
-DEFAULT_MIN_INTERVAL = 0.5  # seconds between requests => <= 2 req/s
+DEFAULT_MIN_INTERVAL = 0.5
 DEFAULT_MAX_RETRIES = 4
-DEFAULT_BACKOFF_BASE = 1.0  # seconds; doubles each retry
+DEFAULT_BACKOFF_BASE = 1.0
 
 Transport = Callable[[str, Optional[dict], float], Tuple[int, bytes]]
 
@@ -48,7 +48,7 @@ class MetaboLightsNotFoundError(MetaboLightsHTTPError):
 
 def _requests_transport(url: str, params: Optional[dict], timeout: float) -> Tuple[int, bytes]:
     """Default transport using the ``requests`` library (imported lazily)."""
-    import requests  # local import so offline tests never need it
+    import requests
 
     resp = requests.get(
         url,
@@ -83,11 +83,11 @@ class MetaboLightsClient:
         self._transport: Transport = transport or _requests_transport
         self._sleep = sleep
         self._last_request_t: float = 0.0
-        # instrumentation counters (read by benchmarks)
+
         self.n_requests: int = 0
         self.bytes_downloaded: int = 0
 
-    # ------------------------------------------------------------------ #
+
     def reset_counters(self) -> None:
         self.n_requests = 0
         self.bytes_downloaded = 0
@@ -112,10 +112,10 @@ class MetaboLightsClient:
             self._last_request_t = time.monotonic()
             try:
                 status, body = self._transport(url, params, self.timeout_s)
-            except Exception as exc:  # connection error / timeout
+            except Exception as exc:
                 last_err = f"transport error: {exc!r}"
                 self.n_requests += 1
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     self._backoff(attempt)
                 continue
             self.n_requests += 1
@@ -129,7 +129,7 @@ class MetaboLightsClient:
                 )
             if status >= 500 or status == 429:
                 last_err = f"HTTP {status}"
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     self._backoff(attempt)
                 continue
             if status != 200:
@@ -140,7 +140,7 @@ class MetaboLightsClient:
                 return json.loads(body.decode("utf-8"))
             except (ValueError, UnicodeDecodeError) as exc:
                 last_err = f"JSON decode error: {exc}"
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     self._backoff(attempt)
                 continue
         raise MetaboLightsHTTPError(

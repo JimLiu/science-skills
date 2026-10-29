@@ -15,8 +15,8 @@ import httpx
 DEFAULT_BASE_URL = "https://www.ebi.ac.uk/intact/ws"
 USER_AGENT = "intact-interactions/0.1 (bio-tools wave 3; httpx)"
 
-# Status codes that are worth retrying: transient server-side failures and
-# rate limiting. 4xx other than 429 are treated as permanent errors.
+
+
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 
@@ -56,14 +56,14 @@ class IntActClient:
         self.max_retries = max_retries
         self._last_request_at = 0.0
         self.http_requests = 0
-        self.bytes_downloaded = 0  # wire bytes (compressed if server gzips)
+        self.bytes_downloaded = 0
         self._client = httpx.Client(
             timeout=timeout_s,
             headers={"Accept": "application/json", "User-Agent": USER_AGENT},
             transport=transport,
         )
 
-    # ------------------------------------------------------------------ #
+
 
     def close(self) -> None:
         self._client.close()
@@ -74,7 +74,7 @@ class IntActClient:
     def __exit__(self, *exc: Any) -> None:
         self.close()
 
-    # ------------------------------------------------------------------ #
+
 
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_at

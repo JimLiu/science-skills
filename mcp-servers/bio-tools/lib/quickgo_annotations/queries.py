@@ -3,17 +3,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# GO aspects accepted by the QuickGO annotation endpoints.
+
 ASPECTS = ("biological_process", "molecular_function", "cellular_component")
 
-# Evidence presets. NOTE: the QuickGO REST API has *no* working `goEvidence`
-# parameter (it is silently ignored if supplied) -- evidence filtering must be
-# expressed as ECO evidence codes.  The presets below map friendly names onto
-# the ECO filters QuickGO actually honours.
+
+
+
+
 EVIDENCE_PRESETS: dict[str, dict] = {
-    # manually-assigned experimental evidence (EXP, IDA, IPI, IMP, IGI, IEP, HTP family)
+
     "experimental_manual": {"evidenceCode": "ECO:0000269", "evidenceCodeUsage": "descendants"},
-    # electronically inferred (IEA)
+
     "automatic_iea": {"evidenceCode": "ECO:0000501", "evidenceCodeUsage": "descendants"},
 }
 

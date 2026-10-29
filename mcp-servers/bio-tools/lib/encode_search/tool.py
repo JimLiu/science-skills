@@ -1,13 +1,14 @@
 """High-level surface mirroring the six mcp-tooluniverse-encode methods."""
 from __future__ import annotations
 
-import urllib.parse
 from typing import Any
+
+from mcp_servers_common.pathseg import seg
 
 from .client import EncodeClient
 from .records import experiment_record, file_record, biosample_record, record_for
 
-# Portal default page size when no limit is given -- the naive-baseline trap.
+
 DEFAULT_PORTAL_PAGE = 25
 PAGE_SIZE = 100
 
@@ -19,9 +20,9 @@ class EncodeSearch:
         self.client = client or EncodeClient()
         self.page_size = page_size
 
-    # ------------------------------------------------------------------ #
-    # internal: complete, count-verified retrieval via /report/
-    # ------------------------------------------------------------------ #
+
+
+
     def _search_all(self, type_name: str, filters: dict[str, Any],
                     fields: list[str], date_cutoff: str | None = None,
                     date_field: str = "date_released") -> dict:
@@ -67,10 +68,10 @@ class EncodeSearch:
                 f"collected {len(rows)} of total {total}")
         return {"total": total, "rows": rows}
 
-    # ------------------------------------------------------------------ #
-    # search surfaces (mirror: search_experiments / search_biosamples /
-    #                            list_files)
-    # ------------------------------------------------------------------ #
+
+
+
+
     EXPERIMENT_FIELDS = ["accession", "assay_title", "assay_term_name",
                          "target.label", "biosample_ontology.term_name",
                          "status", "date_released", "lab.title"]
@@ -143,12 +144,12 @@ class EncodeSearch:
         out["accessions"] = sorted(r["accession"] for r in out["rows"])
         return out
 
-    # ------------------------------------------------------------------ #
-    # detail surfaces (mirror: get_experiment / get_file / get_biosample)
-    # ------------------------------------------------------------------ #
+
+
+
     def _get_object(self, accession: str) -> dict:
         return self.client.get_json(
-            f"/{urllib.parse.quote(str(accession), safe='')}/",
+            f"/{seg(accession)}/",
             params={"format": "json"})
 
     def get_experiment(self, accession: str) -> dict:
@@ -163,9 +164,9 @@ class EncodeSearch:
     def get_any(self, accession: str) -> dict:
         return record_for(self._get_object(accession))
 
-    # ------------------------------------------------------------------ #
-    # independent ground-truth helpers (used by the gate, not normal calls)
-    # ------------------------------------------------------------------ #
+
+
+
     def search_total(self, type_name: str, filters: dict[str, Any],
                      date_cutoff: str | None = None,
                      date_field: str = "date_released") -> int:

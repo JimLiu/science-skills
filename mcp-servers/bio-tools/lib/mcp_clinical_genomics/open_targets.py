@@ -88,7 +88,7 @@ class OpenTargetsClient:
             if errors and _transient_graphql(errors) and attempt < self.max_attempts:
                 last_failure = {"data": body.get("data"), "errors": errors,
                                 "attempts": attempt}
-                continue  # the HTTP-200 "Internal server error" quirk — retry
+                continue
             out: dict[str, Any] = {"data": body.get("data"), "attempts": attempt}
             if errors:
                 out["errors"] = errors

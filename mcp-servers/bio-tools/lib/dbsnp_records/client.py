@@ -26,7 +26,7 @@ DEFAULT_MIN_INTERVAL_S = 0.4
 DEFAULT_TIMEOUT_S = 15.0
 DEFAULT_MAX_RETRIES = 1
 RETRY_STATUS = {429, 500, 502, 503, 504}
-# NCBI 5xx bursts are short (observed); one retry after 2 s clears most.
+
 BACKOFF_S = 2.0
 
 
@@ -63,10 +63,10 @@ class DbsnpClient:
         self.stats = RequestStats()
 
     def _throttle(self, url: str) -> None:
-        # PROCESS-wide pacing via the shared HostPacer (review 3393212445,
-        # corrected by 3398505421: pace() must see the REQUEST URL, not a
-        # bare label — a label bypasses the netloc collapse): both NCBI
-        # hosts fold into ONE budget through SHARED_BUDGET_SUFFIXES.
+
+
+
+
         pace(url, self.min_interval_s)
 
     def _request(self, url: str, params: dict | None = None,
@@ -115,7 +115,7 @@ class DbsnpClient:
             return resp
         raise DbsnpApiError(f"{method} {url} retries exhausted: {last_err!r}")
 
-    # -- Variation Services ---------------------------------------------------
+
 
     def get_refsnp(self, rs_number: int) -> dict | None:
         """Fetch one RefSNP JSON object; None when the rs number does not
@@ -130,7 +130,7 @@ class DbsnpClient:
             raise DbsnpApiError(
                 f"refsnp/{rs_number} returned non-JSON: {resp.text[:200]}")
 
-    # -- E-utilities ------------------------------------------------------------
+
 
     def esearch_snp(self, term: str, retmax: int) -> dict:
         """esearch db=snp; returns the ``esearchresult`` dict (``count`` is

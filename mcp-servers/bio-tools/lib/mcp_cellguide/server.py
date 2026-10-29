@@ -3,16 +3,19 @@
 from typing import Any
 
 from .client import CellGuideClient
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import blank
 from mcp_servers_common.errors import raise_on_error_payload
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 from .resolver import CellTypeResolver
 
-mcp = FastMCP("cellguide")
 
-# Module-level client instances (created once when server starts)
+
+mcp = GuardedFastMCP("cellguide")
+
+
 _client = CellGuideClient()
 _resolver = CellTypeResolver(_client)
 
@@ -67,6 +70,10 @@ async def search_cell_types(query: str, limit: int = 10) -> dict[str, Any]:
 
     Returns ``{result: [{id, name, synonyms, ontology_description}, ...]}``.
     """
+
+
+    if blank(query):
+        raise ValueError("query must be non-empty")
     matches = await _client.search_cell_types(query, limit=limit)
 
     results = [
@@ -78,11 +85,11 @@ async def search_cell_types(query: str, limit: int = 10) -> dict[str, Any]:
         }
         for m in matches
     ]
-    # Wrapped in a dict so FastMCP serializes ONE JSON object — a bare
-    # ``list[dict]`` return is per-item-serialized into N TextContent blocks
-    # (FastMCP's ``_convert_to_content`` recurses into lists), which the
-    # 06-25 probe saw as "a raw string of multiple JSON blobs" vs the
-    # documented ``{result: array<object>}`` schema.
+
+
+
+
+
     return {"result": results}
 
 
@@ -96,6 +103,13 @@ async def get_marker_genes(cell_type: str, marker_type: str = "computational", l
         marker_type: 'computational' (data-derived) or 'canonical' (literature-based)
         limit: Maximum number of genes to return
     """
+
+
+
+    if marker_type not in ("computational", "canonical"):
+        raise ValueError(
+            f"marker_type must be 'computational' or 'canonical', "
+            f"got {marker_type!r}")
     cell_id = await _resolver.resolve(cell_type)
 
     if not cell_id:
@@ -192,10 +206,10 @@ async def get_cell_tissues(cell_type: str) -> dict[str, Any]:
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run(transport="stdio")
 

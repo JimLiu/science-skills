@@ -26,8 +26,8 @@ from typing import Any, Iterator
 import requests
 
 API_BASE = "https://api.cellmodelpassports.sanger.ac.uk"
-PAGE_SIZE = 100          # verified reliable; 500 times out upstream
-MIN_REQUEST_INTERVAL = 0.5  # politeness: <= 2 req/s
+PAGE_SIZE = 100
+MIN_REQUEST_INTERVAL = 0.5
 TIMEOUT = 60
 
 __version__ = "0.1.0"
@@ -51,7 +51,7 @@ class CMPClient:
         self.bytes_downloaded = 0
         self._last_request_at = 0.0
 
-    # ------------------------------------------------------------------ core
+
 
     def _get(self, path: str, params: dict[str, str] | None = None) -> dict[str, Any]:
         wait = self.min_interval - (time.monotonic() - self._last_request_at)

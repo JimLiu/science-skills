@@ -51,7 +51,7 @@ class QuickGOClient:
         self.stats = TransportStats()
         self._last_request_t = 0.0
 
-    # -- internal -----------------------------------------------------------
+
     def _throttle(self) -> None:
         wait = self.min_interval_s - (time.monotonic() - self._last_request_t)
         if wait > 0:
@@ -71,12 +71,12 @@ class QuickGOClient:
             except (requests.ConnectionError, requests.Timeout) as exc:
                 last_exc = exc
                 self.stats.retries += 1
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2.0 ** attempt, 8.0))
                 continue
             if resp.status_code in RETRYABLE_STATUS:
                 self.stats.retries += 1
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2.0 ** attempt, 8.0))
                 last_exc = requests.HTTPError(f"HTTP {resp.status_code} for {url}")
                 continue
@@ -88,7 +88,7 @@ class QuickGOClient:
         raise RuntimeError(f"QuickGO request failed after {self.max_retries} attempts: "
                            f"{url} ({last_exc})")
 
-    # -- public -------------------------------------------------------------
+
     def get_json(self, path: str, params: dict | None = None) -> dict:
         return self._get(path, params or {}, "application/json").json()
 

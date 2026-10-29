@@ -15,9 +15,9 @@ import unicodedata
 
 from lxml import etree
 
-# ---------------------------------------------------------------------------- #
-# text helpers
-# ---------------------------------------------------------------------------- #
+
+
+
 _WS_RE = re.compile(r"\s+")
 
 
@@ -57,9 +57,9 @@ def normalize_abstract(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", text)
 
 
-# ---------------------------------------------------------------------------- #
-# IMRaD classification
-# ---------------------------------------------------------------------------- #
+
+
+
 _IMRAD_RULES: list[tuple[str, str]] = [
     (r"^(introduction|background)\b", "introduction"),
     (r"^(materials?\s+and\s+methods?|methods?|methodology|experimental\s+procedures?|"
@@ -96,16 +96,16 @@ def classify_section(title: str, sec_type: str | None) -> str:
         if mapped:
             return mapped
     t = (title or "").strip().lower()
-    t = re.sub(r"^[0-9ivx]+[.):\s]+\s*", "", t)  # strip leading numbering
+    t = re.sub(r"^[0-9ivx]+[.):\s]+\s*", "", t)
     for pattern, label in _IMRAD_RULES:
         if re.search(pattern, t):
             return label
     return "other"
 
 
-# ---------------------------------------------------------------------------- #
-# main extraction
-# ---------------------------------------------------------------------------- #
+
+
+
 def extract_sections(xml_bytes: bytes, include_section_text: bool = True) -> dict:
     """Parse JATS XML and return the structured article representation."""
     parser = etree.XMLParser(recover=True, huge_tree=True, resolve_entities=False,
@@ -116,37 +116,37 @@ def extract_sections(xml_bytes: bytes, include_section_text: bool = True) -> dic
 
     front_meta = root.find(".//front/article-meta")
 
-    # title
+
     title_el = root.find(".//front/article-meta/title-group/article-title")
     title = _text(title_el)
 
-    # abstract: first <abstract> without an abstract-type (the main abstract);
-    # fall back to the first abstract of any type. Graphical abstracts excluded.
+
+
     abstract_text = ""
     if front_meta is not None:
         abstracts = front_meta.findall("abstract")
         main = [a for a in abstracts if not a.get("abstract-type")]
         chosen = main[0] if main else (abstracts[0] if abstracts else None)
         if chosen is not None:
-            # drop the boilerplate direct-child <title>Abstract</title> (the
-            # search endpoint's abstractText does not carry it); structured
-            # sub-section titles (Background/Results/...) inside <sec> are kept.
+
+
+
             import copy as _copy
 
             chosen = _copy.deepcopy(chosen)
             for child in list(chosen):
                 if child.tag == "title" and _text(child).strip().lower() == "abstract":
                     chosen.remove(child)
-            # some Europe PMC JATS files embed the keyword group inside the
-            # abstract element (either as <kwd-group> or as a
-            # <sec sec-type="kwd-group">); keywords are metadata, not abstract text
+
+
+
             for kwd_sec in chosen.findall(".//sec[@sec-type='kwd-group']"):
                 parent = kwd_sec.getparent()
                 if parent is not None:
                     parent.remove(kwd_sec)
             abstract_text = _text(chosen, exclude_tags=("kwd-group",))
 
-    # top-level body sections, document order
+
     sections = []
     body = root.find(".//body")
     if body is not None:
@@ -168,7 +168,7 @@ def extract_sections(xml_bytes: bytes, include_section_text: bool = True) -> dic
                 entry["text"] = sec_plain
             sections.append(entry)
 
-    # figure / table captions, document order (whole document, incl. floats-group)
+
     figure_captions = []
     for fig in root.iter("fig"):
         figure_captions.append({
@@ -184,9 +184,9 @@ def extract_sections(xml_bytes: bytes, include_section_text: bool = True) -> dic
             "caption": _text(tw.find("caption")),
         })
 
-    # reference count: <ref> elements inside any <ref-list>, wherever it sits.
-    # Europe PMC JATS frequently has no <back>; the ref-list is nested inside a
-    # body <sec> instead, so we count ref-list descendants document-wide.
+
+
+
     n_references = sum(
         1 for ref in root.iter("ref")
         if any(anc.tag == "ref-list" for anc in ref.iterancestors())

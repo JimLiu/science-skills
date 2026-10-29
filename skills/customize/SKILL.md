@@ -7,7 +7,14 @@ license: Apache-2.0
 # Customize
 
 Build and maintain **agent profiles** and **skills** programmatically via the
-`repl` tool using `host.agents.*` and `host.skills.*`.
+`repl` tool using `host.agents.*` and `host.skills.*`. (An organization admin
+can turn custom skills or custom connectors off, and some plans have them off
+by default. With custom skills off, creating a new skill or publishing a draft
+is refused with an error saying custom skills are turned off for the user's
+organization — existing skills keep loading and stay editable. With custom
+connectors off, attaching one is refused the same way and existing custom
+connectors are hidden from you until they are turned back on. Tell the user;
+there is no workaround from here.)
 
 A **profile** is a named bundle that shapes how an agent behaves:
 
@@ -21,10 +28,13 @@ A **profile** is a named bundle that shapes how an agent behaves:
 - **`skill_names`** (optional restriction) — by default a profile sees the
   **full live skill catalog** via `search_skills` / `skill(...)`, same as the
   main agent. Pass an explicit list ONLY to deliberately restrict it; `[]` creates
-  a zero-skill specialist. **Restricting skills also restricts connectors** —
+  a zero-skill specialist. (Bio-restricted sessions: the default is
+  unavailable — the host refuses a create without an explicit
+  `skill_names` list.) **Restricting skills also restricts connectors** —
   a single `unrestricted` flag governs both; passing `skill_names` flips the
   profile to curated mode and starts it with **zero** connectors (see next).
-- **Connector access** — an **unrestricted** profile (the default) reaches
+- **Connector access** — an **unrestricted** profile (the default, where the
+  session permits minting one — see the bio-restricted note above) reaches
   **every connector** (bundled + custom + authorized directory), same as the
   main agent; use `detach_connector` to subtract specific ones. A **curated**
   profile (one created with an explicit `skill_names` list, or flipped via
@@ -63,14 +73,15 @@ host.agents.list()
 host.agents.create(name, display_name, description,
                      system_prompt="", skill_names=None)
 # name: 2–32 chars, UPPERCASE letters / digits / underscores only —
-#       e.g. "RNASEQ_REVIEWER". Lowercase / dashes are rejected.
+#       e.g. "SQL_REVIEWER". Lowercase / dashes are rejected.
 #       display_name is the human-friendly picker label.
 # skill_names controls catalog visibility:
 #   - leave it unset → the profile sees the FULL live skill catalog, same as
 #     the main agent — skills published later appear automatically. It also
 #     gets every connector the main agent has, resolved dynamically — new
 #     connectors added later appear automatically too. This is the default;
-#     don't pass a list unless you mean to restrict.
+#     don't pass a list unless you mean to restrict. (Refused on
+#     bio-restricted sessions — pass an explicit list there.)
 #   - pass a list (including []) → restricts `search_skills`/`skill(...)` to
 #     EXACTLY those names. [] creates a zero-skill specialist.
 # → the stored profile record (same shape as one list() entry)
@@ -96,7 +107,8 @@ host.agents.update(name, patch)
 #           {"skill_names": cur["skillNames"] + ["new-skill"]})
 # (return-dict keys are camelCase — read "skillNames", write "skill_names")
 # patch["unrestricted"] = True → back to the full live catalog + all
-# connectors (undoes a skill_names restriction).
+# connectors (undoes a skill_names restriction; refused on bio-restricted
+# sessions — profiles there always keep an explicit skill list).
 # → updated profile record
 # (excludedTools is NOT a patch field — it's per-connector; use
 #  attach_connector's include_tools_pattern/exclude_tools_pattern below.)
@@ -104,8 +116,13 @@ host.agents.update(name, patch)
 host.agents.switch(name)
 # Ask to continue THIS conversation as `name`. Shows the user an approval
 # card; on Allow, the switch takes effect on their NEXT message (the current
-# turn finishes as the current profile). On decline, tell the user they can
-# select the profile from the session config popover on any new conversation.
+# turn finishes as the current profile). The switch is a re-dress, not a
+# handoff: the same conversation carries on under `name`'s system prompt —
+# full transcript, live kernel, artifacts and memory are all inherited, and
+# the incoming profile is told it is taking over from the prior one. Nothing
+# to checkpoint, summarize, or hand over; just make the call. On decline, tell
+# the user they can select the profile from the session config popover on
+# any new conversation.
 # → {"switched": True, "name", "displayName"}
 
 host.agents.delete(name)
@@ -195,12 +212,15 @@ scope→draft→confirm loop; `ask_user` (step 4) is the review gate. A plan
 adds a second approval that duplicates the `ask_user` confirmation and
 drags in step-status bookkeeping that fights this workflow.
 
-**User approval.** Most `host.agents.*` / `host.skills.*` calls apply
-immediately — `create`/`update` (including unrestricted),
-`attach_*`/`detach_*`, and `skills.publish`/`skills.edit` are pre-approved
-at session start and the cell does NOT pause. An approval card (cell
-pauses, resumes automatically on Allow — you don't retry) appears only
-for the calls that **hand off identity or free a granted name**:
+**User approval.** Every `host.agents.*` / `host.skills.*` call that
+writes — `create`/`update` (including unrestricted, where the session
+permits it — see step 3), `attach_*`/`detach_*`, `skills.edit`,
+`skills.publish`, `switch`, `delete` — can raise an approval card the user
+must accept (the cell pauses and resumes automatically on Allow — you
+don't retry). The card shows what is being written: the profile prompt
+and description, or the skill file / whole skill bundle being published.
+No card appears when the user has already allowed that kind of call for
+this conversation, project, or always. Scope notes:
 
 - `host.agents.switch(name)` — per-target; Allow covers this name only
 - `host.agents.update(name, {"name": ...})` (rename) — per-target
@@ -208,6 +228,15 @@ for the calls that **hand off identity or free a granted name**:
   per project**: the first delete shows a card; "Allow for this project"
   covers every subsequent delete in this project, including bulk
   teardown. Do NOT tell the user they'll see N cards for N deletes.
+- `host.skills.publish(name)` is refused (nothing published) when the
+  bundle cannot be shown on a card in full — a binary or very large file,
+  or more than 64 files; tell the user to publish it from Customize →
+  Skills instead. It is also refused when SKILL.md's frontmatter is not
+  valid YAML (quote values that contain `: `, no duplicate keys) — fix it
+  with `host.skills.edit` and publish again. `host.skills.edit` is
+  refused for a single write over 64 KiB; split it into smaller edits.
+  `host.agents.create/update` are refused for a display name over 200,
+  a description over 2,000 or a system prompt over 32,000 characters.
 
 The name is read from the runtime call for `switch` and rename, so both
 literal and variable names work (`host.agents.switch("FOO")` or
@@ -225,7 +254,7 @@ it cannot be renamed or deleted.
 ### 1. Scope first
 
 What is this agent *for*? A profile should have one job. Pick an UPPER_SNAKE
-name (`RNASEQ_REVIEWER`, not `RNA-seq review helper`). Use `ask_user` if the
+name (`SQL_REVIEWER`, not `SQL review helper`). Use `ask_user` if the
 name or scope is unclear — profiles are user-visible in the picker.
 
 ### 2. Write the identity
@@ -246,6 +275,12 @@ description — a narrowly-described specialist may still want full reach,
 and a broadly-described one may want a tight loadout. Pair this with the
 name/prompt review in step 4 so it's one round-trip.
 
+**Bio-restricted sessions:** full access is not available — the create call
+is refused unless it carries an explicit `skill_names` list. If your system
+prompt says profiles created from this session always carry an explicit
+skill list, skip the full-access offer: go straight to curating the subset
+with the user.
+
 ### 4. Review with the user
 
 Show the proposed name, display name, description, `system_prompt`, and the
@@ -255,7 +290,9 @@ writing. If they chose a subset, list the proposed skills/connectors here.
 ### 5. Create
 
 Call `host.agents.create(name, display_name, description, system_prompt=...)`.
-If the user chose **full access**, leave `skill_names` unset. If they chose a
+If the user chose **full access**, leave `skill_names` unset (not available
+on bio-restricted sessions — the host refuses the create; pass an explicit
+list instead, see step 3). If they chose a
 **subset**, pass `skill_names=[...]` with the agreed list — **this flips the
 profile to curated mode and starts it with zero connectors**, so attach the
 agreed connectors after create as in step 6. For edits to an existing profile,
@@ -267,9 +304,12 @@ edits.
 
 After the profile exists, **offer to switch to it**:
 `host.agents.switch(name)`. The user sees an approval card; on Allow, this
-conversation continues as the new specialist from their next message. If they
-decline, tell them they can select it from the session config popover on any
-new conversation.
+conversation continues as the new specialist from their next message. It is
+the same conversation under a new system prompt — the specialist inherits the
+full transcript, the live kernel, artifacts and memory, so there is nothing
+to checkpoint or hand off first; just call `switch` when the user asks. If
+they decline, tell them they can select it from the session config popover on
+any new conversation.
 
 ### 6. Restricting the loadout (when the user chose a subset)
 
@@ -296,12 +336,14 @@ If the user chose a subset in step 3, curate after create:
   profile there is nothing to detach — don't use it to "restrict".
 - After attaching, read back `host.agents.get(name)["connectors"]` to confirm
   the reach matches what you told the user.
-- To undo a restriction: `host.agents.update(name, {"unrestricted": True})`.
+- To undo a restriction: `host.agents.update(name, {"unrestricted": True})`
+  (refused on bio-restricted sessions — profiles there always keep an
+  explicit skill list).
 
 ### 7. Set up the environment
 
 After the profile exists, propose a conda environment for it: name it after the
-profile (lowercase slug, e.g. `rnaseq-reviewer`), pick `python` or `r` based on
+profile (lowercase slug, e.g. `sql-reviewer`), pick `python` or `r` based on
 the skills you attached, and list the packages those skills need. `ask_user` to
 confirm the package list, then call
 `manage_environments(mode="create", name="<slug>", packages=[...])` and, if
@@ -313,7 +355,9 @@ remain available as fallbacks.
 ### What makes a good profile
 
 - **A sharp identity.** One job, stated clearly in `system_prompt`. Full
-  catalog access by default — restrict the loadout only when the user asks.
+  catalog access by default — restrict the loadout only when the user asks
+  (on bio-restricted sessions there is no full-access default: every
+  profile carries an explicit skill list).
 - **Composable.** Reuse existing skills; don't inline workflow steps into
   `system_prompt` that belong in a skill.
 - **Safe by default.** If a connector is powerful, exclude the tools the agent
@@ -334,9 +378,10 @@ Then use the `host.skills` SDK via the `repl` tool to write and publish:
 
 ```python
 # draft
+# Double-quote frontmatter values that contain ': ' (e.g. the description).
 host.skills.edit("my-skill", "SKILL.md", """---
 name: my-skill
-description: ...
+description: "..."
 ---
 
 # My Skill
@@ -358,6 +403,15 @@ Once published, the skill is in the live catalog — every unrestricted profile
 immediately. For a restricted profile, attach it explicitly with
 `host.agents.attach_skill(profile_name, "my-skill")`.
 
+A saved draft already works before it is published: drafts show up in
+`search_skills` and load with `skill(...)`, labeled as drafts, for every agent
+whose skill set is not locked. Publishing shares the skill with the user's
+organization through claude.ai. If `host.skills.publish` fails because this
+app has no working claude.ai sign-in (some setups, such as a managed VM, have
+none), do not retry it: tell the user the skill is saved and ready to use
+in their chats here, and that sharing it with their organization needs a
+claude.ai sign-in.
+
 ---
 
 ## Kernel sidecars (`kernel.py` / `kernel.R`)
@@ -378,10 +432,10 @@ names — nothing author-written runs at load time. Allowed at the top level:
   which also replaces `0`, `""`, `[]`).
 - `import` / `from … import name` (no `*`). Defer third-party imports to
   inside function bodies — the skeleton `python` env ships stdlib + a small
-  starter set (numpy, pandas, scipy, matplotlib, seaborn, pillow), so e.g.
-  `import requests` at module scope surfaces a load error on every fresh
-  kernel. Import errors don't fail the skill load; the agent sees the
-  traceback and can `manage_packages` then re-load.
+  starter set (numpy, pandas, scipy, matplotlib, seaborn, pillow and, on newer
+  installs, requests), so e.g. `import httpx` at module scope surfaces a load
+  error on every fresh kernel. Import errors don't fail the skill load; the
+  agent sees the traceback and can `manage_packages` then re-load.
 - Assignment of a **literal** constant to a plain name (e.g. `VERSION = "1"`,
   `LIMITS = (1, 2, 3)`). Computed values like `os.path.join(...)` are
   rejected — move them into a function body.
@@ -390,8 +444,11 @@ Anything else at the top level (classes, calls, `if`/`for`, non-literal
 assigns) is rejected with `[kernel.py rejected] …`. Names starting with `_`
 are reserved by the loader and cannot be bound at the top level (use
 `import os` and reference `os.path` inside functions, not
-`import os as _os`). Function **bodies** are not restricted — they run only
-when the agent calls them in a `python` cell.
+`import os as _os`). Top-level names that shadow a Python builtin (`def open`,
+`print = ...`, `import x as input`, `format = "csv"`, …) are likewise
+rejected — sidecar names are mirrored into the session globals, so prefix
+helpers instead (`open_table`, not `open`). Function **bodies** are not
+restricted — they run only when the agent calls them in a `python` cell.
 
 Keep `kernel.py` small and self-contained (same guidance applies to
 `kernel.R`). If a helper wants more than ~100 lines, trim it to the core
@@ -429,7 +486,7 @@ script (or pass `env={**os.environ, "PYTHONSAFEPATH": ""}` to
 `subprocess.run`). If the child exits non-zero, `capture_output=True`
 hides the traceback — inspect `CalledProcessError.stderr`.
 
-`kernel.R` has no runtime analogue of `co_filename` (the R loader parses
+`kernel.R` has no runtime analog of `co_filename` (the R loader parses
 with `keep.source=FALSE`), so an R sidecar that needs to reach `scripts/`
 should take the path as an argument from the caller.
 
@@ -441,7 +498,7 @@ import pandas as pd  # starter-set package — OK at module scope
 
 def annotate_df(df: pd.DataFrame, gene_col: str = "gene") -> pd.DataFrame:
     """Attach HGNC symbols; see SKILL.md ## Workflow step 3."""
-    import requests  # not in starter set — defer to function body
+    import httpx  # not in starter set — defer to function body
     ...
     return df
 ```
@@ -449,7 +506,8 @@ def annotate_df(df: pd.DataFrame, gene_col: str = "gene") -> pd.DataFrame:
 Write sidecars via `host.skills.edit(name, "kernel.py", src)`. When the
 gate probe can judge, the edit result carries `sidecar_gate: {ok, error?}`
 — the same structural gate the load path runs — so a reject (non-literal
-default, `_`-prefixed name, top-level call) surfaces immediately. When the
+default, `_`-prefixed or builtin-shadowing name, top-level call) surfaces
+immediately. When the
 probe can't judge (interpreter unavailable, or the source doesn't parse
 under the host's interpreter — possible version drift), the key is absent
 and `note` says why. Iterate against that; don't load the skill just to

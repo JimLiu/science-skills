@@ -35,8 +35,10 @@ def derive_paper_brief(abstract_text, figure_claims, model=None):
       f"## Abstract\n{abstract_text}\n\n## Figures\n{fc}\n")
     r = pn_sdk().llm(prompt, tools=[{"name":"paper_brief","input_schema":paper_brief_schema()}],
                    tool_choice={"type":"tool","name":"paper_brief"},
-                   model=model or "claude-sonnet-5", max_tokens=2000)
-    brief = (r.get("tool_use") or [{}])[0].get("input") or {}
+
+
+                   model=model or pn_sdk().reasoning_model(), max_tokens=2000)
+    brief = (r.get("tool_use") or {}).get("input") or {}
     brief.setdefault("figures", figure_claims)
     return brief
 

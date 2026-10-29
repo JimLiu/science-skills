@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import json
 
-# ---------------------------------------------------------------------------
-# Dosage assertion code normalization
-# ---------------------------------------------------------------------------
-# Codes observed in the /api/dosage JSON (haplo_assertion / triplo_assertion),
-# verified at build against the labels in the /kb/gene-dosage/download CSVs.
+
+
+
+
+
 DOSAGE_ASSERTION_LABELS = {
     "0": "No Evidence",
     "1": "Little Evidence",
@@ -30,7 +30,7 @@ DOSAGE_ASSERTION_LABELS = {
     "-5": "Not yet evaluated",
 }
 
-# CSV label prefix -> code (for the independent CSV cross-check in the gate)
+
 CSV_LABEL_TO_CODE = {
     "No Evidence": "0",
     "Little Evidence": "1",
@@ -59,7 +59,7 @@ def normalize_dosage_assertion(value) -> dict | None:
         code = s.split(":")[0].strip()
     label = DOSAGE_ASSERTION_LABELS.get(code)
     if label is None:
-        # unknown code: keep raw so nothing is silently rewritten
+
         return {"code": code, "label": s}
     return {"code": code, "label": label}
 
@@ -75,9 +75,9 @@ def csv_label_to_code(label: str) -> str | None:
     return f"UNKNOWN:{label}"
 
 
-# ---------------------------------------------------------------------------
-# Record extractors
-# ---------------------------------------------------------------------------
+
+
+
 
 def validity_record(row: dict) -> dict:
     """Stable record from one /api/validity row.
@@ -112,7 +112,7 @@ def dosage_record(row: dict) -> dict:
     return {
         "record_type": "region" if is_region else "gene",
         "symbol": (row.get("symbol") or "").strip(),
-        "id": row.get("hgnc_id"),          # HGNC:n for genes, ISCA-n for regions
+        "id": row.get("hgnc_id"),
         "cytoband": row.get("location"),
         "grch37": row.get("grch37"),
         "grch38": row.get("grch38"),
@@ -207,9 +207,9 @@ def erepo_record(interp: dict) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Canonical serialization (shared by gate / bench / tests)
-# ---------------------------------------------------------------------------
+
+
+
 
 def canonicalize(obj) -> bytes:
     """Canonical UTF-8 JSON bytes: sorted keys, compact separators."""

@@ -114,7 +114,10 @@ The daemon hands scripts three things in their **process environment**
 (this endpoint's persistent directory — put the model cache here), and the
 credential value under its own name. Nothing else is inherited — ambient
 tokens are not visible; the ONLY secret a script sees is its registered
-credential.
+credential. Scripts run with a fixed system `PATH` (the standard system
+directories plus the detected Docker's own directory), not the user's shell
+`PATH`: call `docker` and the usual system tools by name, and anything
+installed only in a per-user location by its absolute path.
 
 The start script must be **idempotent** (cold create / warm start / crash
 re-entry), with the **port-mismatch guard** — the runtime freezes port

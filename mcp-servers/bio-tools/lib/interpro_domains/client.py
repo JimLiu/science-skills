@@ -29,10 +29,11 @@ from __future__ import annotations
 
 import json
 import time
-import urllib.parse
 from dataclasses import dataclass, field
 
 import httpx
+
+from mcp_servers_common.pathseg import seg
 from mcp_servers_common.ratelimit import retry_after_seconds
 
 DEFAULT_BASE_URL = "https://www.ebi.ac.uk/interpro/api"
@@ -105,7 +106,7 @@ class InterProClient:
             follow_redirects=True,
         )
 
-    # ------------------------------------------------------------------ low level
+
 
     def close(self) -> None:
         self._client.close()
@@ -130,10 +131,10 @@ class InterProClient:
                 resp = self._client.get(url)
                 self._last_request_t = time.monotonic()
                 self.stats.record(url, len(resp.content))
-            except httpx.HTTPError as exc:  # transport-level failure
+            except httpx.HTTPError as exc:
                 self._last_request_t = time.monotonic()
                 last_exc = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     self._backoff(attempt)
                 continue
             if resp.status_code == 204:
@@ -142,7 +143,7 @@ class InterProClient:
                 raise AccessionNotFound(f"404 Not Found: {url}")
             if resp.status_code in RETRYABLE_STATUS:
                 last_exc = InterProError(f"HTTP {resp.status_code} from {url}")
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     self._backoff(attempt, resp)
                 continue
             resp.raise_for_status()
@@ -163,7 +164,7 @@ class InterProClient:
             return None
         return resp.json()
 
-    # ------------------------------------------------------------------ endpoints
+
 
     def get_protein_entries(self, accession: str, page_size: int | None = None) -> dict:
         """Fetch ALL InterPro entries matching a UniProt accession (complete pagination).
@@ -174,7 +175,7 @@ class InterProClient:
         does not equal the API's ``count`` field.
         """
         ps = page_size or self.page_size
-        acc = urllib.parse.quote(str(accession), safe="")
+        acc = seg(accession)
         url = f"{self.base_url}/entry/interpro/protein/uniprot/{acc}/?page_size={ps}"
         results: list = []
         count = 0
@@ -182,7 +183,7 @@ class InterProClient:
         while url:
             payload = self._get_json(url)
             pages += 1
-            if payload is None:  # 204 — no entries for this protein
+            if payload is None:
                 count = 0
                 break
             count = payload.get("count", 0)
@@ -202,7 +203,7 @@ class InterProClient:
         response body text (what an agent ingesting raw JSON would read).
         """
         url = (f"{self.base_url}/entry/interpro/protein/uniprot/"
-               f"{urllib.parse.quote(str(accession), safe='')}/")
+               f"{seg(accession)}/")
         resp = self._get(url)
         if resp is None:
             return {"accession": accession, "count": 0, "results": [], "raw": ""}
@@ -222,7 +223,7 @@ class InterProClient:
         Returns ``{"accession", "count", "results", "raw_pages"}``.
         """
         url = (f"{self.base_url}/entry/interpro/protein/uniprot/"
-               f"{urllib.parse.quote(str(accession), safe='')}/")
+               f"{seg(accession)}/")
         results: list = []
         raw_pages: list[str] = []
         count = 0
@@ -244,7 +245,7 @@ class InterProClient:
         ``metadata.counters.dbEntries.interpro`` (0 if absent).
         """
         url = (f"{self.base_url}/protein/uniprot/"
-               f"{urllib.parse.quote(str(accession), safe='')}/?extra_fields=counters")
+               f"{seg(accession)}/?extra_fields=counters")
         payload = self._get_json(url)
         if payload is None:
             return 0
@@ -260,8 +261,8 @@ class InterProClient:
         or None.
         """
         url = (f"{self.base_url}/protein/uniprot/"
-               f"{urllib.parse.quote(str(accession), safe='')}/entry/interpro/"
-               f"{urllib.parse.quote(str(entry_accession), safe='')}/")
+               f"{seg(accession)}/entry/interpro/"
+               f"{seg(entry_accession)}/")
         try:
             payload = self._get_json(url)
         except AccessionNotFound:

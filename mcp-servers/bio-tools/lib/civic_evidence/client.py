@@ -40,7 +40,7 @@ class GraphQLError(CivicApiError):
 class TransportStats:
     requests: int = 0
     bytes_downloaded: int = 0
-    raw_bodies: list = field(default_factory=list)  # populated only when capture_raw=True
+    raw_bodies: list = field(default_factory=list)
 
 
 class CivicClient:
@@ -65,13 +65,13 @@ class CivicClient:
         self.stats = TransportStats()
         self._last_request_t = 0.0
 
-    # -- internals ---------------------------------------------------------
+
     def _throttle(self) -> None:
         dt = time.monotonic() - self._last_request_t
         if dt < self.min_interval_s:
             time.sleep(self.min_interval_s - dt)
 
-    # -- public ------------------------------------------------------------
+
     def execute(self, query: str, variables: dict | None = None) -> dict:
         """POST one GraphQL operation; return the parsed ``data`` object.
 
@@ -84,10 +84,10 @@ class CivicClient:
             self._throttle()
             try:
                 resp = self.session.post(self.base_url, json=body, timeout=self.timeout_s)
-            except requests.RequestException as exc:      # connection / timeout
+            except requests.RequestException as exc:
                 self._last_request_t = time.monotonic()
                 last_err = exc
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2 ** attempt, 30))
                 continue
             self._last_request_t = time.monotonic()
@@ -97,7 +97,7 @@ class CivicClient:
                 last_err = CivicApiError(f"HTTP {resp.status_code} from {self.base_url}")
                 retry_after = resp.headers.get("Retry-After", "")
                 delay = retry_after_seconds(retry_after, min(2 ** attempt, 30))
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(delay)
                 continue
             if resp.status_code != 200:
@@ -107,7 +107,7 @@ class CivicClient:
                 payload = resp.json()
             except json.JSONDecodeError as exc:
                 last_err = exc
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2 ** attempt, 30))
                 continue
             if payload.get("errors"):

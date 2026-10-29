@@ -27,7 +27,7 @@ from .flatten import _iter_files
 
 FILES_BASE_URL = "https://www.ebi.ac.uk/biostudies/files"
 
-#: refuse to parse SDRFs larger than this without explicit override
+
 DEFAULT_MAX_SDRF_BYTES = 50_000_000
 
 

@@ -31,8 +31,8 @@ __all__ = [
     "recruiting_near", "build_spec_query", "run_spec",
 ]
 
-# ---------------------------------------------------------------------------
-# record trimming
+
+
 
 def _module(study: dict, name: str) -> dict:
     return (study.get("protocolSection") or {}).get(name) or {}
@@ -78,8 +78,8 @@ def trim_study(study: dict) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# core runner
+
+
 
 def _run(base_params: dict[str, str],
          essie_expression: str,
@@ -94,7 +94,7 @@ def _run(base_params: dict[str, str],
         for s in studies:
             t = trim_study(s)
             if t["nct_id"]:
-                by_id[t["nct_id"]] = t            # defensive dedup, last wins
+                by_id[t["nct_id"]] = t
         nct_ids = sorted(by_id)
         return {
             "spec_id": spec_id,
@@ -258,8 +258,8 @@ def recruiting_near(condition: str | None = None,
     return _run(params, expr, spec_id=spec_id, client=client)
 
 
-# ---------------------------------------------------------------------------
-# battery-spec runner (drives bench/battery.json)
+
+
 
 def build_spec_query(spec: dict) -> tuple[str, dict[str, Any]]:
     """Resolve a battery spec dict to (method_name, kwargs)."""

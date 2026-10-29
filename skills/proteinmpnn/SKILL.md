@@ -38,8 +38,11 @@ bundled in the repo.
 
 ```bash
 pip install torch numpy   # if not already present
-git clone --depth 1 https://github.com/dauparas/ProteinMPNN.git proteinmpnn
-cd proteinmpnn
+# pinned for supply-chain hygiene — bump via PR (SHA matches envs/proteomics_gpu.py)
+git clone https://github.com/dauparas/ProteinMPNN.git proteinmpnn
+# One command: if the pinned commit cannot be checked out, you stay outside the clone.
+# If it fails, stop — cd'ing in by hand would run the steps below on unpinned code.
+git -C proteinmpnn checkout 8907e6671bfbfc92303b5f79c4b5e6ce47cdef57 && cd proteinmpnn
 python protein_mpnn_run.py \
   --pdb_path backbone.pdb --pdb_path_chains "A" \
   --out_folder out --num_seq_per_target 16 --sampling_temp "0.1"

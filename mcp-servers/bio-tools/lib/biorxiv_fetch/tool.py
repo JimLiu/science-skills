@@ -36,10 +36,10 @@ from .client import BiorxivApiError, BiorxivClient, IncompleteRetrieval, NotFoun
 
 SERVERS = ("biorxiv", "medrxiv")
 
-# Informational convenience constant (the MCP's get_categories ships as a
-# constant per the build spec). Transcribed from the bioRxiv submission
-# category list as of capture (2026-06-08); NOT part of the accuracy gate.
-# The API accepts underscore form in ?category= and echoes the spaced form.
+
+
+
+
 BIORXIV_CATEGORIES = (
     "animal behavior and cognition", "biochemistry", "bioengineering",
     "bioinformatics", "biophysics", "cancer biology", "cell biology",
@@ -53,10 +53,10 @@ BIORXIV_CATEGORIES = (
 
 _ROR_RE = re.compile(r"^[0-9a-z]{9}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-# one slash only (prefix/suffix); suffix restricted to DOI-safe chars — no ?, #, /
+
 _DOI_RE = re.compile(r"^10\.\d{4,9}/[A-Za-z0-9][A-Za-z0-9._;()\-]*$")
 _PUBLISHER_RE = re.compile(r"^10\.\d{4,9}$")
-_VOLATILE_FIELDS = frozenset({"published"})  # journal-publication linkage accrues over time
+_VOLATILE_FIELDS = frozenset({"published"})
 
 
 def _check_server(server: str) -> str:
@@ -118,7 +118,7 @@ class BiorxivFetch:
     def __init__(self, client: BiorxivClient | None = None):
         self.client = client or BiorxivClient()
 
-    # -- 1. preprint detail by DOI ------------------------------------------
+
     def get_preprint(self, doi: str, server: str = "biorxiv") -> dict:
         """All version records for one preprint DOI on one server."""
         _check_server(server)
@@ -134,7 +134,7 @@ class BiorxivFetch:
         return {"server": server, "doi": doi, "n_versions": len(versions),
                 "versions": versions}
 
-    # -- shared cursor walk ---------------------------------------------------
+
     def _walk(self, path_for_cursor, what: str) -> tuple[int, list[dict]]:
         cursor, total, records = 0, None, []
         while True:
@@ -165,7 +165,7 @@ class BiorxivFetch:
                 f"{what}: walked {len(records)} records but API total is {total}")
         return total, records
 
-    # -- 2. date-interval listing ---------------------------------------------
+
     def list_preprints(self, server: str, date_from: str, date_to: str,
                        category: str | None = None) -> dict:
         """Complete (cursor-walked, count-verified) listing of preprints
@@ -183,7 +183,7 @@ class BiorxivFetch:
         return {"server": server, "interval": f"{date_from}:{date_to}",
                 "category": category or "all", "total": total, "records": records}
 
-    # -- 3. published-preprint links --------------------------------------------
+
     def published_links(self, server: str, date_from: str, date_to: str,
                         publisher_prefix: str | None = None) -> dict:
         """Preprint -> journal-article links for publication dates in the
@@ -211,7 +211,7 @@ class BiorxivFetch:
                 "publisher_prefix": publisher_prefix, "total": total,
                 "records": records}
 
-    # -- 4. funder listing ---------------------------------------------------------
+
     def by_funder(self, ror_id: str, date_from: str, date_to: str,
                   server: str = "biorxiv") -> dict:
         """Preprints acknowledging a funder (ROR id), closed date interval.
@@ -225,12 +225,12 @@ class BiorxivFetch:
         total, records = self._walk(
             lambda c: f"/funder/{server}/{date_from}/{date_to}/{ror}/{c}/json",
             f"by_funder {ror} {server}")
-        # funder label as echoed by the API on the first page (informational)
+
         return {"server": server, "ror_id": ror,
                 "interval": f"{date_from}:{date_to}", "total": total,
                 "records": records}
 
-    # -- 5./6. statistics (bioRxiv only upstream) -----------------------------------
+
     def _stats(self, route: str, interval: str, through: str | None) -> dict:
         if interval not in ("m", "y"):
             raise ValueError("interval must be 'm' (monthly) or 'y' (yearly)")

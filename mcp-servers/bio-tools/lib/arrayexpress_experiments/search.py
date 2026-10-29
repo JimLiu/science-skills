@@ -23,9 +23,9 @@ from typing import Any
 
 from .client import BioStudiesClient, BioStudiesError
 
-PAGE_SIZE_MAX = 100  # server-side cap, observed 2026-05-30
+PAGE_SIZE_MAX = 100
 
-# canonical search-record field order
+
 SEARCH_RECORD_FIELDS = [
     "accession",
     "title",
@@ -92,7 +92,7 @@ class SearchSpec:
         for k, v in sorted(self.extra_facets.items()):
             key = k if k.startswith("facet.") else f"facet.{k}"
             params[key] = v.lower()
-        # exact totals + deterministic order require a concrete sort field
+
         params["sortBy"] = "release_date"
         params["sortOrder"] = self.sort_order
         return params
@@ -138,16 +138,16 @@ def search_experiments(
     params = spec.to_params()
     page_size = min(page_size, PAGE_SIZE_MAX)
 
-    # The server's release_date sort is not stable for same-date ties, and the
-    # tie order can DIFFER BETWEEN PAGE FETCHES of one sweep (observed live:
-    # a 660-hit query intermittently returns one accession twice across a page
-    # boundary and drops another, yielding 659 unique; the direct query for the
-    # duplicated accession shows totalHits=1, so the index itself is clean).
-    # A sweep whose unique count != totalHits is an inconsistent pagination
-    # snapshot, not missing data. Retrying at the SAME page size can fail
-    # persistently — the problematic tie-pair sits at a fixed page boundary —
-    # so each retry uses a different page size, which moves every boundary
-    # (a tie-pair cannot straddle the same boundary at two different sizes).
+
+
+
+
+
+
+
+
+
+
     page_size_schedule = [page_size,
                           max(2, page_size - 3),
                           max(2, page_size - 11)]
@@ -191,10 +191,10 @@ def search_experiments(
     if last_error is not None:
         raise last_error
 
-    # Deterministic output order. The server's release_date sort is not stable for ties
-    # (experiments sharing a release date can come back in a different order on every
-    # request), so we re-sort client-side: release_date in the requested direction, with
-    # accession (ascending) as the tie-break.
+
+
+
+
     records.sort(key=lambda r: (r.get("accession") or ""))
     records.sort(key=lambda r: (r.get("release_date") or ""),
                  reverse=spec.sort_order != "ascending")

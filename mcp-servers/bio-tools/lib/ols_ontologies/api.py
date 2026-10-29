@@ -2,9 +2,9 @@
 term-count verification."""
 from __future__ import annotations
 
-import urllib.parse
-
 from typing import Iterable, Optional
+
+from mcp_servers_common.pathseg import seg
 
 from .client import OLSClient
 from .records import parse_ontology_record, strip_links
@@ -19,7 +19,7 @@ def fetch_ontologies(ontology_ids: Iterable[str], client: Optional[OLSClient] = 
     records, not_found, raw_by_id = [], [], {}
     try:
         for oid in ontology_ids:
-            raw = client.get_json(f"/ontologies/{urllib.parse.quote(str(oid), safe='')}")
+            raw = client.get_json(f"/ontologies/{seg(oid)}")
             if raw is None:
                 not_found.append(oid)
                 continue
@@ -93,11 +93,10 @@ def verify_term_counts(ontology_ids: Iterable[str], client: Optional[OLSClient] 
             if record_counts is not None and oid in record_counts:
                 rec_count = record_counts[oid]
             else:
-                raw = client.get_json(
-                    f"/ontologies/{urllib.parse.quote(str(oid), safe='')}")
+                raw = client.get_json(f"/ontologies/{seg(oid)}")
                 rec_count = None if raw is None else raw.get("numberOfTerms")
             tpage = client.get_json(
-                f"/ontologies/{urllib.parse.quote(str(oid), safe='')}/terms",
+                f"/ontologies/{seg(oid)}/terms",
                 params={"size": 1})
             terms_total = None if tpage is None else (tpage.get("page") or {}).get("totalElements")
             checks.append({

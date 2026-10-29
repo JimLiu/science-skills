@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import json
 
-# ---------------------------------------------------------------------------
-# GraphQL field selections (kept lean: stable, scientifically meaningful
-# fields only — no events, revisions, comments, flags, or activity blocks,
-# which are volatile curation-workflow state).
-# ---------------------------------------------------------------------------
+
+
+
+
+
 
 GENE_FIELDS = """
   id
@@ -136,12 +136,12 @@ THERAPY_FIELDS = """
   link
 """
 
-# ---------------------------------------------------------------------------
-# Sorting of unordered collections
-# ---------------------------------------------------------------------------
+
+
+
 
 _LIST_SORT_KEYS = {
-    # field name -> key function for its element dicts
+
     "variantTypes": lambda d: (d.get("soid") or "", d.get("id") or 0),
     "therapies": lambda d: (d.get("id") or 0),
     "phenotypes": lambda d: (d.get("id") or 0),

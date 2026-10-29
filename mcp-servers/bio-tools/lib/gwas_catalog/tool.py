@@ -12,38 +12,33 @@ is the "most significant first" prefix of the full set.
 """
 from __future__ import annotations
 
-import urllib.parse
 from typing import Any
+
+from mcp_servers_common.pathseg import seg as _seg
 
 from .client import GwasClient
 
 PAGE_SIZE = 500
-MAX_PAGES = 8  # hard request bound per walk: 8 pages * ~1.5 s << 50 s budget
+MAX_PAGES = 8
 
 
-def _seg(value: str) -> str:
-    """Percent-encode one REST path segment (model-supplied identifiers must
-    not traverse/inject into the request path)."""
-    return urllib.parse.quote(str(value), safe="")
 
 
-#: Live-verified v2 filter names per route (receipts 2026-06-11: each name
-#: returns a small filtered total vs the whole table — associations:
-#: rs_id=rs7412 -> 1134, mapped_gene=PCSK9 -> 1539, efo_id=MONDO_0005010 ->
-#: 4081, efo_trait -> 4081 vs 1,142,122 unfiltered; studies: efo_id/
-#: efo_trait -> 210, pubmed_id -> 1 vs 217,186; efo-traits: trait=coronary
-#: -> 14 vs 20,616). The v2 API silently ignores unknown params, so only
-#: names on this list may ever reach the wire.
+
+
+
+
+
 ALLOWED_FILTERS: dict[str, frozenset[str]] = {
     "/associations": frozenset({"rs_id", "mapped_gene", "efo_id", "efo_trait"}),
     "/studies": frozenset({"efo_id", "efo_trait", "pubmed_id"}),
     "/efo-traits": frozenset({"trait"}),
 }
 
-#: Routes whose allowlisted filters are identifiers/exact labels — a result
-#: approaching the whole table proves the filter was ignored upstream.
-#: (/efo-traits is excluded: its ``trait`` filter is a substring match, so a
-#: broad query can legitimately match nearly everything.)
+
+
+
+
 WHOLE_TABLE_GUARDED = frozenset({"/associations", "/studies"})
 
 
@@ -143,7 +138,7 @@ class GwasCatalog:
         self.page_size = page_size
         self._route_totals: dict[str, int] = {}
 
-    # -- pagination core ----------------------------------------------------
+
 
     def _route_total(self, path: str) -> int:
         """Unfiltered table size for a route (1-row probe, cached per
@@ -151,8 +146,8 @@ class GwasCatalog:
         (UNcached) when the probe body lacks a positive ``totalElements``, so
         a malformed/empty probe never poisons the tripwire: caching 0 would
         make ``api_total >= 0.9 * 0`` always true and raise FilterIgnored for
-        every filtered query for the life of this lru_cache singleton
-        (finding 3407097648). Callers skip the guard when this is <= 0."""
+        every filtered query for the life of this lru_cache singleton.
+        Callers skip the guard when this is <= 0."""
         if path not in self._route_totals:
             payload = self.client.get_json(path, params={"size": 1, "page": 0})
             total = (payload.get("page") or {}).get("totalElements", 0)
@@ -183,8 +178,8 @@ class GwasCatalog:
                 f"filter(s) {sorted(unknown)} are not on the live-verified "
                 f"allowlist for {path} ({sorted(allowed)}); the v2 API "
                 f"silently ignores unknown params")
-        # Constant request size across the walk — the v2 ``page`` parameter
-        # indexes pages OF THAT SIZE, so varying it mid-walk would skip rows.
+
+
         size = min(self.page_size, max_records)
         rows: list[dict] = []
         api_total = 0
@@ -210,8 +205,8 @@ class GwasCatalog:
             if len(rows) >= wanted:
                 break
             if not batch:
-                # API promised more rows than it served — never report a
-                # short walk as complete OR as merely capped.
+
+
                 raise CountMismatch(
                     f"{path} {params}: walked {len(rows)} rows but the API "
                     f"reports totalElements={api_total}")
@@ -226,7 +221,7 @@ class GwasCatalog:
                 f"reports totalElements={api_total}")
         return kept, api_total, truncated
 
-    # -- associations ---------------------------------------------------------
+
 
     def associations(self, filters: dict[str, Any], max_records: int
                      ) -> dict[str, Any]:
@@ -239,7 +234,7 @@ class GwasCatalog:
                 "truncated": truncated,
                 "associations": [flatten_association(r) for r in rows]}
 
-    # -- studies / traits / snps ----------------------------------------------
+
 
     def studies(self, filters: dict[str, Any], max_records: int
                 ) -> dict[str, Any]:

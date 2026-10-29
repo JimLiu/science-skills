@@ -20,7 +20,7 @@ NS = {
     "arxiv": "http://arxiv.org/schemas/atom",
 }
 
-MAX_RESULTS_CEILING = 100   # one paced request per tool call
+MAX_RESULTS_CEILING = 100
 MAX_IDS_PER_FETCH = 100
 
 SORT_BY = {"relevance", "lastUpdatedDate", "submittedDate"}
@@ -28,8 +28,8 @@ SORT_ORDER = {"ascending", "descending"}
 
 _ID_VERSION = re.compile(r"^(?P<id>.+?)(?:v(?P<version>\d+))?$")
 _DATE_DIGITS = re.compile(r"^\d{8}$")
-# New-style (2007+) "2103.14030" or old-style "q-bio.PE/0601001" /
-# "solv-int/9909010", each with an optional "vN" suffix.
+
+
 _ARXIV_ID = re.compile(
     r"^(\d{4}\.\d{4,5}|[a-z][a-z-]*(\.[A-Za-z-]+)?/\d{7})(v\d+)?$")
 
@@ -173,9 +173,9 @@ class ArxivFetch:
         if len(requested) > MAX_IDS_PER_FETCH:
             raise ValueError(f"at most {MAX_IDS_PER_FETCH} ids per call "
                              f"(got {len(requested)})")
-        # Ids that don't match arXiv's grammar go straight to not_found —
-        # one malformed token in id_list makes arXiv reject the WHOLE
-        # batch with its error envelope, killing the valid ids with it.
+
+
+
         ids, not_found = [], []
         duplicates: list[dict] = []
         for raw in requested:
@@ -190,12 +190,12 @@ class ArxivFetch:
             root = self.client.query({
                 "id_list": ",".join(ids), "max_results": len(ids)})
             out = parse_feed(root)
-            # arXiv does not guarantee id_list order; restore it and report
-            # ids that came back empty (unknown ids yield no entry at all).
+
+
             by_id: dict[str, dict] = {}
             for rec in out["records"]:
                 if rec["arxiv_id"] is None:
-                    continue  # id-less stub entry — can't match a request
+                    continue
                 by_id.setdefault(rec["arxiv_id"], rec)
                 by_id.setdefault(rec["id_versioned"], rec)
             seen: dict[int, str] = {}
@@ -207,10 +207,10 @@ class ArxivFetch:
                     seen[id(rec)] = req
                     records.append(rec)
                 else:
-                    # Two input spellings resolved to the same paper (e.g.
-                    # bare + versioned form): disclose the collapse instead
-                    # of dropping the second input from the accounting
-                    # (review 3393212463; "never silently drops an input").
+
+
+
+
                     duplicates.append(
                         {"requested": req, "resolved_as": seen[id(rec)]})
         return {"n_requested": len(requested), "n_found": len(records),

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import requests
 from mcp_servers_common.ratelimit import retry_after_seconds
 
-# Bounds for _decode_body's defensive gzip unwrapping (#2875 review).
+
 _MAX_GZIP_LAYERS = 3
 _MAX_DECODED_BYTES = 64 * 1024 * 1024
 
@@ -26,7 +26,7 @@ RETRY_STATUSES = {429, 500, 502, 503, 504}
 @dataclass
 class HttpStats:
     requests: int = 0
-    bytes_downloaded: int = 0  # bytes read off the wire (after chunked decoding, BEFORE gzip content-decoding)
+    bytes_downloaded: int = 0
     retries: int = 0
     per_request: list = field(default_factory=list)
 
@@ -57,17 +57,17 @@ class InstrumentedSession:
     ):
         self.session = requests.Session()
         self.session.headers["User-Agent"] = user_agent
-        # NOTE: requests' default Accept-Encoding (gzip, deflate, ...) is kept as-is.
-        # Pinning "Accept-Encoding: gzip" makes rest.uniprot.org's cache layer return a
-        # double-gzipped body (pre-compressed cached object re-compressed by the front end),
-        # so we leave negotiation to requests and decode defensively in _decode_body.
+
+
+
+
         self.min_interval_s = min_interval_s
         self.max_tries = max_tries
         self.timeout = timeout
         self.stats = HttpStats()
         self._last_request_t = 0.0
 
-    # ------------------------------------------------------------------ #
+
 
     def _throttle(self) -> None:
         now = time.monotonic()
@@ -95,7 +95,7 @@ class InstrumentedSession:
                 if resp.status_code in RETRY_STATUSES:
                     self.stats.retries += 1
                     delay = retry_after_seconds(resp.headers.get("Retry-After"), 2.0 ** attempt)
-                    if attempt < self.max_tries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                    if attempt < self.max_tries - 1:
                         time.sleep(delay)
                     continue
                 resp.raise_for_status()
@@ -104,7 +104,7 @@ class InstrumentedSession:
             except (requests.ConnectionError, requests.Timeout) as exc:
                 last_exc = exc
                 self.stats.retries += 1
-                if attempt < self.max_tries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_tries - 1:
                     time.sleep(2.0 ** attempt)
         raise RuntimeError(f"GET {url} failed after {self.max_tries} tries") from last_exc
 
@@ -119,7 +119,7 @@ class InstrumentedSession:
 def _bounded_gunzip(data: bytes) -> bytes:
     """Gunzip with the size cap enforced DURING expansion (1MB reads) — a
     bomb is rejected after at most cap+1MB is materialized, never after full
-    expansion (#2875 alo re-review on the earlier post-hoc check)."""
+    expansion."""
     out = bytearray()
     with gzip.GzipFile(fileobj=io.BytesIO(data)) as gz:
         while True:
@@ -147,18 +147,18 @@ def _bounded_inflate(data: bytes) -> bytes:
 def _decode_body(raw: bytes, content_encoding: str) -> bytes:
     enc = (content_encoding or "").lower()
     body = raw
-    # Content-Encoding stage is bounded too — it expands attacker-shaped
-    # bytes exactly like the defensive loop below.
+
+
     if "gzip" in enc:
         body = _bounded_gunzip(body)
     elif "deflate" in enc:
         body = _bounded_inflate(body)
-    # Defensive: rest.uniprot.org's cache can serve a pre-compressed object that the front end
-    # compresses again (observed when Accept-Encoding is pinned to exactly "gzip"). The text
-    # formats fetched here are never legitimately gzip files, so unwrap any remaining layers —
-    # but bounded: unlimited unwrapping of attacker-shaped bytes is a decompression bomb
-    # (#2875 review, robustness). Two extra layers covers every observed double-compression;
-    # anything deeper, or growth past the size cap, is not a legitimate UniProt response.
+
+
+
+
+
+
     for _ in range(_MAX_GZIP_LAYERS):
         if body[:2] != b"\x1f\x8b":
             break

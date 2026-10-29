@@ -5,8 +5,8 @@ import time
 
 from .client import AlphaFoldClient, InvalidAccessionError, NotFoundError
 
-# Batch ceiling per tool call: 40 accessions at <= 2 req/s stays well inside
-# the per-tool wall-clock budget (< 50 s).
+
+
 MAX_IDS_PER_CALL = 40
 
 _URL_FIELDS = {
@@ -96,8 +96,7 @@ def fetch_coverage_records(
     get an explicit error field — never silently dropped. ``deadline_s`` bounds
     the per-accession wall-clock: accessions not reached before it elapses are
     returned in ``not_processed`` rather than overrunning the ~60s MCP
-    transport budget (mirrors the sibling ClinVar/dbSNP batch tools,
-    finding 3406986057).
+    transport budget (mirrors the sibling ClinVar/dbSNP batch tools).
     """
     cleaned: list[str] = []
     seen: set[str] = set()

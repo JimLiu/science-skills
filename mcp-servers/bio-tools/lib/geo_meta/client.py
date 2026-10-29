@@ -21,11 +21,11 @@ import httpx
 from mcp_servers_common.ratelimit import SHARED, HostPacer, retry_after_seconds
 from mcp_servers_common.ua import product_ua
 
-# NCBI identification (legal Y12): the stdio server runs on the user's box,
-# so the UA identifies the user's install. The `email=` query param (built in
-# core._eutils_params with NCBI_EMAIL > OPERON_CONTACT_EMAIL > omit
-# precedence) is what NCBI reads for warn-before-block.
-DEFAULT_USER_AGENT = product_ua("geo-meta")
+
+
+
+
+DEFAULT_USER_AGENT = product_ua()
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
@@ -35,7 +35,7 @@ class RequestStats:
     """Cumulative transport statistics for one PoliteClient."""
 
     requests: int = 0
-    bytes_downloaded: int = 0  # compressed wire bytes when measurable
+    bytes_downloaded: int = 0
     retries: int = 0
     log: list[dict[str, Any]] = field(default_factory=list)
 
@@ -63,9 +63,9 @@ class PoliteClient:
         self.min_interval = min_interval
         self.max_retries = max_retries
         self._sleep = sleep
-        # Pace against the process-wide per-host gate so all NCBI clients in
-        # the aggregate share one budget; tests that inject fake sleep/clock
-        # get a private pacer with identical semantics (no cross-test state).
+
+
+
         if sleep is time.sleep and clock is time.monotonic:
             self._pacer = SHARED
         else:
@@ -78,11 +78,11 @@ class PoliteClient:
             transport=transport,
         )
 
-    # ------------------------------------------------------------------ helpers
+
     def _record(self, response: httpx.Response, url: str) -> None:
         wire = getattr(response, "num_bytes_downloaded", 0) or 0
         if not wire:
-            # MockTransport / cached responses: fall back to body length.
+
             wire = len(response.content)
         self.stats.requests += 1
         self.stats.bytes_downloaded += int(wire)
@@ -117,7 +117,7 @@ class PoliteClient:
             response.raise_for_status()
             return response
 
-    # ------------------------------------------------------------------ public
+
     def get(self, url: str, params: Optional[dict[str, Any]] = None) -> httpx.Response:
         return self._request("GET", url, params=params)
 

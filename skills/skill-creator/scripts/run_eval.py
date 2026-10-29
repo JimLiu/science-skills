@@ -6,8 +6,11 @@ for a set of queries. Outputs results as JSON.
 """
 
 import argparse
+import contextlib
+import errno
 import json
 import os
+import re
 import select
 import subprocess
 import sys
@@ -32,6 +35,17 @@ def find_project_root() -> Path:
     return current
 
 
+def probe_slug(skill_name: str) -> str:
+    """Kebab-case form of the skill name for the probe's command file name.
+
+    The probe file must land in .claude/commands/ whatever the frontmatter
+    says, so only the characters quick_validate.py allows in a name survive
+    ([a-z0-9-]); a malformed `name:` such as "../../x" or "/abs" cannot steer
+    the path, and a draft named "My Skill" still gets a usable probe.
+    """
+    return re.sub(r"[^a-z0-9-]+", "-", skill_name.lower()).strip("-")[:64] or "skill"
+
+
 def run_single_query(
     query: str,
     skill_name: str,
@@ -43,19 +57,19 @@ def run_single_query(
     """Run a single query and return whether the skill was triggered.
 
     Creates a command file in .claude/commands/ so it appears in Claude's
-    available_skills list, then runs `claude -p` with the raw query.
+    available_skills list, then runs `claude -p` with the query on stdin.
     Uses --include-partial-messages to detect triggering early from
     stream events (content_block_start) rather than waiting for the
     full assistant message, which only arrives after tool execution.
     """
     unique_id = uuid.uuid4().hex[:8]
-    clean_name = f"{skill_name}-skill-{unique_id}"
+    clean_name = f"{probe_slug(skill_name)}-skill-{unique_id}"
     project_commands_dir = Path(project_root) / ".claude" / "commands"
     command_file = project_commands_dir / f"{clean_name}.md"
 
     try:
         project_commands_dir.mkdir(parents=True, exist_ok=True)
-        # Use YAML block scalar to avoid breaking on quotes in description
+
         indented_desc = "\n  ".join(skill_description.split("\n"))
         command_content = (
             f"---\n"
@@ -69,7 +83,7 @@ def run_single_query(
 
         cmd = [
             "claude",
-            "-p", query,
+            "-p",
             "--output-format", "stream-json",
             "--verbose",
             "--include-partial-messages",
@@ -77,13 +91,14 @@ def run_single_query(
         if model:
             cmd.extend(["--model", model])
 
-        # Remove CLAUDECODE env var to allow nesting claude -p inside a
-        # Claude Code session. The guard is for interactive terminal conflicts;
-        # programmatic subprocess usage is safe.
+
+
+
         env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
 
         process = subprocess.Popen(
             cmd,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             cwd=project_root,
@@ -93,11 +108,19 @@ def run_single_query(
         triggered = False
         start_time = time.time()
         buffer = ""
-        # Track state for stream event detection
+
         pending_tool_name = None
         accumulated_json = ""
 
         try:
+
+
+
+
+            with contextlib.suppress(BrokenPipeError):
+                process.stdin.write(query.encode("utf-8"))
+            with contextlib.suppress(BrokenPipeError):
+                process.stdin.close()
             while time.time() - start_time < timeout:
                 if process.poll() is not None:
                     remaining = process.stdout.read()
@@ -125,7 +148,7 @@ def run_single_query(
                     except json.JSONDecodeError:
                         continue
 
-                    # Early detection via stream events
+
                     if event.get("type") == "stream_event":
                         se = event.get("event", {})
                         se_type = se.get("type", "")
@@ -153,7 +176,7 @@ def run_single_query(
                             if se_type == "message_stop":
                                 return False
 
-                    # Fallback: full assistant message
+
                     elif event.get("type") == "assistant":
                         message = event.get("message", {})
                         for content_item in message.get("content", []):
@@ -170,7 +193,7 @@ def run_single_query(
                     elif event.get("type") == "result":
                         return triggered
         finally:
-            # Clean up process on any exit path (return, exception, timeout)
+
             if process.poll() is None:
                 process.kill()
                 process.wait()
@@ -220,6 +243,28 @@ def run_eval(
                 query_triggers[query] = []
             try:
                 query_triggers[query].append(future.result())
+            except OSError as e:
+
+
+
+
+
+
+
+
+                if e.errno in (errno.EACCES, errno.EPERM, errno.EROFS):
+                    print(
+                        "ERROR: cannot write the trigger-probe command file "
+                        f"under {project_root}/.claude ({e}). The sandbox "
+                        "denies .claude writes by default; run outside the "
+                        "sandbox or grant .claude explicitly (L16). Aborting "
+                        "the eval rather than recording corrupted verdicts.",
+                        file=sys.stderr,
+                    )
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise SystemExit(2)
+                print(f"Warning: query failed: {e}", file=sys.stderr)
+                query_triggers[query].append(False)
             except Exception as e:
                 print(f"Warning: query failed: {e}", file=sys.stderr)
                 query_triggers[query].append(False)

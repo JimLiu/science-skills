@@ -10,7 +10,7 @@ import httpx
 
 BASE_URL = "https://clinicaltrials.gov/api/v2"
 
-# Trimmed field set requested server-side (piece names from /api/v2/studies/metadata).
+
 DEFAULT_FIELDS = "|".join([
     "NCTId", "BriefTitle", "OverallStatus", "Phase", "StudyType",
     "Condition", "InterventionType", "InterventionName",
@@ -52,7 +52,7 @@ class CTGovClient:
             headers={"User-Agent": "clinicaltrials-fetch/0.1 (anthropic-experimental/bio-tools)"},
         )
 
-    # -- low level -------------------------------------------------------------
+
 
     def close(self) -> None:
         self._client.close()
@@ -86,7 +86,7 @@ class CTGovClient:
             }
             return resp.json(), meta
 
-    # -- studies endpoint ------------------------------------------------------
+
 
     def count(self, base_params: dict[str, str]) -> tuple[int, dict]:
         """Independent count-only request (countTotal=true, pageSize=1, fields=NCTId)."""

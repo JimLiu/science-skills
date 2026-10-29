@@ -60,6 +60,43 @@ adata.obs["pred_cell_type"] = lvae.predict()
 `accelerator="gpu", devices=1` is the PyTorch-Lightning spelling; the legacy
 `use_gpu=` kwarg was **removed** in scvi-tools 1.x and now raises `TypeError`.
 
+Hard labels hide uncertainty: `lvae.predict(soft=True)` returns per-cell
+class probabilities (a DataFrame, one column per cell type). Keep
+`.max(axis=1)` alongside the labels and treat cells below a threshold
+(e.g. 0.8) as low-confidence instead of accepting every call.
+
+### Query-to-reference mapping (scArches)
+
+To annotate a new dataset against an **already-trained** reference atlas,
+don't retrain from scratch — map the query onto the frozen reference
+(scArches-style transfer learning; see the reference-mapping guide at
+docs.scvi-tools.org):
+
+```python
+adata_query.layers["counts"] = adata_query.X.copy()  # raw counts, like the reference
+adata_query.obs["cell_type"] = "Unknown"             # query starts unlabeled
+scvi.model.SCANVI.prepare_query_anndata(adata_query, lvae)  # align genes; missing → zero-padded
+query = scvi.model.SCANVI.load_query_data(adata_query, lvae)
+query.train(max_epochs=100, plan_kwargs={"weight_decay": 0.0})
+
+adata_query.obsm["X_scANVI"] = query.get_latent_representation()
+adata_query.obs["pred_cell_type"] = query.predict()
+```
+
+The query also needs the reference's `batch` column in `.obs`.
+`weight_decay: 0.0` keeps fine-tuning from eroding the frozen reference
+latent space. The same classmethods exist on `scvi.model.SCVI` for an
+unlabeled reference (embedding only, no label transfer).
+
+For later scArches mapping, the reference should be built with
+`encode_covariates=True` set on the `scvi.model.SCVI(...)` constructor
+(default `False`; scANVI inherits it via `from_scvi_model`) — the encoder
+is only conditioned on batch/covariates when this is set, and an
+un-conditioned encoder ignores the query's batch, so surgery can't adapt
+the latent space to it. `load_query_data` still runs without it, but
+mapping quality suffers; the reference-mapping tutorial at
+docs.scvi-tools.org shows the full recommended `arches_params`.
+
 ## Differential expression
 
 ```python
@@ -89,6 +126,11 @@ get `lfc_mean` / `lfc_median` / `proba_de` / `is_de_fdr_0.05`. Sort on
 `proba_de` (or on `bayes_factor` if you deliberately stayed in vanilla
 mode).
 
+Two further knobs (DE user guide, docs.scvi-tools.org): `fdr_target` sets
+the posterior-expected-FDR level the `is_de_fdr_*` call column is computed
+at (default 0.05), and `delta=None` swaps the fixed log-fold-change
+threshold for one estimated from the data.
+
 ## Output format
 
 | Key                            | What                                                   |
@@ -107,24 +149,24 @@ Modal env ships scvi-tools 1.4.2 + scanpy 1.11.5 + anndata 0.11.4 — read
 image ref, then:
 
 ```python
-c = host.compute.create('byoc:modal', provider_params={'modal': {
+c = host.compute.create('modal', provider_params={
     'image':  '<image ref from compute_details>',   # e.g. im-...
     'gpu':    'A100',
     'cpu':    8,
     'memory': 32768,
-    'timeout': 3600,
-}})
+    'timeout': 3600,          # container wall clock — optional; omitted → Settings default
+})
 job = c.submit_job(
     intent="scVI+scANVI on 80k cells — 1×A100, ~15 min",
     inputs=[
-        {"src": "dataset.h5ad", "dst_filename": "dataset.h5ad"},
-        {"src": "pipeline.py",  "dst_filename": "pipeline.py"},
+        "dataset.h5ad",
+        "pipeline.py",
     ],
     command="python pipeline.py",
     outputs=["out/**"],
-    timeout_seconds=2400,
+    run_timeout_s=2400,
 )
-print(job.job_id)   # cell ends here — kernel never blocks on compute
+# the Job repr just printed itself (id, notes, deadline) — cell ends here; the kernel never waits on the job
 ```
 
 `h5ad_safe_obs` is auto-loaded into the **local** analysis kernel only — in
@@ -133,14 +175,14 @@ print(job.job_id)   # cell ends here — kernel never blocks on compute
 `.write_h5ad()`.
 
 Then call the `wait_for_notification` brain-tool. When `compute_done`
-arrives, `save_artifacts(payload["featured_files"])`. For the full result
-dict, re-enter the kernel and bind the **compute handle** (not the job)
+arrives, `save_artifacts(payload["output_files"])`. For the full record,
+re-enter the kernel and bind the **compute handle** (not the job)
 separately — `.close()` lives on the handle, not on the job:
 
 ```python
-h = host.compute.create('byoc:modal')
-res = h.attach_job(job_id).result()   # output_files, remote_workdir, ...
-h.close()
+c = host.compute.create('modal')
+res = c.attach_job(job_id).result()   # a read, never a wait: files, stdout_tail, notes, ...
+c.close(intent="scVI run done — stop the sandbox")
 ```
 
 See the `remote-compute-modal` skill for orchestration details.
@@ -165,6 +207,8 @@ See the `remote-compute-modal` skill for orchestration details.
 | `MisconfigurationException: No supported gpu backend found` | No CUDA visible — drop `accelerator`/`devices` to fall back to CPU, or dispatch via Remote compute. |
 | `UnicodeEncodeError: 'ascii' codec can't encode character ...` writing a summary / printing | Container has no `LANG` so Python defaults to ASCII. Open files with `encoding="utf-8"` and/or `sys.stdout.reconfigure(encoding="utf-8")` at script top. The prebuilt `singlecell_gpu` env sets `PYTHONIOENCODING=utf-8`, so this only bites user-built images. |
 | `AttributeError: ... object has no attribute 'close'` on a job handle | You chained `host.compute.create(...).attach_job(...)` and called `.close()` on the job. Bind the compute handle separately and close that — see Remote compute above. |
+| Batches stay separated on the `X_scVI` UMAP (under-correction) | Integrate harder: raise `n_top_genes` (e.g. 4000) or train longer; double-check `batch_key` names the real technical batch. |
+| Known-distinct cell types merge after integration (over-correction) | Use scANVI with whatever labels exist — the label-aware embedding keeps known classes separated. (Moving a variable from `batch_key` to `categorical_covariate_keys` does not help: both are conditioned on identically.) |
 
 ---
 

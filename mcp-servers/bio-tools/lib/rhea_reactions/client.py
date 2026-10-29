@@ -73,7 +73,7 @@ class RheaSparqlClient:
             except requests.RequestException as exc:
                 self._last_request_t = time.monotonic()
                 last_err = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(2.0)
                 continue
             self._last_request_t = time.monotonic()
@@ -85,7 +85,7 @@ class RheaSparqlClient:
                 last_err = RheaApiError(f"HTTP {resp.status_code}")
                 delay = retry_after_seconds(resp.headers.get("Retry-After", ""),
                                             2.0, cap=10.0)
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(delay)
                 continue
             if resp.status_code != 200:

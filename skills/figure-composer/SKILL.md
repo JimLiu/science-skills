@@ -60,7 +60,7 @@ Outline rules (figure-style §7.1):
 ## 2. Fan-out (one sub-agent per panel)
 
 Build requests with `panel_task(outline, letter, fig_label)` (kernel.py). Each
-sub-agent gets: the figure claim, the full neighbour list, its panel spec, exact
+sub-agent gets: the figure claim, the full neighbor list, its panel spec, exact
 pixel dimensions (`panel_px`), and the instruction to load `figure-style`
 and render at exactly w×h px with `transparent=True` and **no** `bbox_inches`.
 
@@ -82,7 +82,7 @@ onto the grid and stamps bold panel letters (case per venue) at each panel's
 ## 3.5 Look before you review (vision self-QA)
 
 The reviewer in §4 is expensive; a panel-letter stamped over a y-axis label or
-a leader line crossing a neighbour's title is a wasted round. After compose,
+a leader line crossing a neighbor's title is a wasted round. After compose,
 **crop each panel from the saved PNG and look at it** in the REPL before
 dispatching the reviewer:
 
@@ -93,12 +93,12 @@ for L, box in compose_crops(outline).items():
 ```
 
 Run the `figure-style` §9.2 perceptual checklist on each crop (contrast,
-smallest mark, leader crossings, colour-identity confusion, legend binding),
+smallest mark, leader crossings, color-identity confusion, legend binding),
 plus two compose-specific checks:
 
 - **Seams / stamp.** Does the bold panel letter overlap any panel content?
-  Does any panel's content bleed into the gutter or under a neighbour?
-- **Resize artefacts.** `compose_figure` resizes panel PNGs to their grid
+  Does any panel's content bleed into the gutter or under a neighbor?
+- **Resize artifacts.** `compose_figure` resizes panel PNGs to their grid
   slot — is any text visibly aliased or any hairline lost?
 
 Fix what you see (re-render the offending panel, or revise the outline grid)
@@ -131,11 +131,11 @@ loop (max 3 rounds, floor 5→4→3):
 ```
 
 Convergence: stop when `outline_revisions` is empty AND findings are carve-out
-exceptions to the previous round — that's the over-labelling signal.
+exceptions to the previous round — that's the over-labeling signal.
 
 ## Anti-patterns
 
 - Don't regenerate clean panels (invites regression). Don't read absolute
   violation counts (min-floor 5→4→3). Anchor-verify on the composite, not just
-  per panel. Hyper-labelling check: would a reader *with* field context find any
+  per panel. Hyper-labeling check: would a reader *with* field context find any
   label redundant? Strip it.

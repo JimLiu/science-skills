@@ -49,7 +49,7 @@ class StringClient:
         self.session = session or requests.Session()
         self.session.headers.update({"User-Agent": caller_identity})
 
-        # accounting
+
         self.n_requests = 0
         self.bytes_downloaded = 0
         self.request_log: list[dict[str, Any]] = []
@@ -57,7 +57,7 @@ class StringClient:
         self._last_request_t = 0.0
         self._version_cache: list[dict[str, Any]] | None = None
 
-    # ------------------------------------------------------------------ utils
+
 
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_t
@@ -69,7 +69,7 @@ class StringClient:
         self.bytes_downloaded = 0
         self.request_log = []
 
-    # ------------------------------------------------------------------- core
+
 
     def call(self, output_format: str, endpoint: str, params: dict[str, Any]) -> str:
         """POST to /api/<output_format>/<endpoint> and return the response body text.
@@ -135,7 +135,7 @@ class StringClient:
             f"after {self.max_attempts} attempts (last error: {last_error})"
         )
 
-    # ------------------------------------------------------------- endpoints
+
 
     def get_version(self) -> dict[str, Any]:
         """Return {'string_version': ..., 'stable_address': ...} (cached per client)."""

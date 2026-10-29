@@ -86,8 +86,8 @@ class UcscClient:
                                         resp.status_code)
                 time.sleep(3.0)
                 continue
-            # 206 Partial Content = maxItemsOutput cut the listing; the
-            # body is valid JSON carrying ``maxItemsLimit: true``.
+
+
             if resp.status_code not in (200, 206):
                 try:
                     message = resp.json().get("error") or resp.text[:300]
@@ -104,7 +104,7 @@ class UcscClient:
         raise UcscApiError(f"UCSC API {path}: giving up after "
                            f"{self.max_retries + 1} attempts: {last_err!r}")
 
-    # ---------------------------------------------------------- endpoints --
+
     def list_genomes(self) -> dict:
         """/list/ucscGenomes -> {genome_db: metadata dict}."""
         return self.get("/list/ucscGenomes").get("ucscGenomes", {})

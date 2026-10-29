@@ -17,6 +17,8 @@ from __future__ import annotations
 import urllib.parse
 from typing import Any
 
+from mcp_servers_common.pathseg import seg
+
 from .client import CMPClient, CMPError
 from .records import (shape_dependency, shape_gene, shape_model,
                       shape_model_row, sort_dependencies)
@@ -24,11 +26,17 @@ from .records import (shape_dependency, shape_gene, shape_model,
 MODEL_INCLUDE = "sample.tissue,sample.cancer_type,model_msi_status"
 
 
+def _like_literal(q: str) -> str:
+    """Escape SQL-LIKE wildcards (and the backslash escape itself) so the
+    query matches literally inside a pattern."""
+    return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class DepMapModels:
     def __init__(self, client: CMPClient | None = None):
         self.client = client or CMPClient()
 
-    # ------------------------------------------------------------- list
+
 
     def list_models(self, tissue: str | None = None,
                     cancer_type: str | None = None) -> dict[str, Any]:
@@ -56,7 +64,7 @@ class DepMapModels:
         return {"count": total, "tissue": tissue, "cancer_type": cancer_type,
                 "models": rows}
 
-    # ----------------------------------------------------------- detail
+
 
     def get_model(self, model_id_or_name: str) -> dict[str, Any]:
         """Model detail by SIDM ID or exact name/synonym (names op 'any')."""
@@ -82,17 +90,21 @@ class DepMapModels:
             raise KeyError(f"name {ident!r} is ambiguous: {ids}")
         return shape_model(data[0], doc.get("included"))
 
-    # ----------------------------------------------------------- search
+
 
     def search_models(self, q: str) -> dict[str, Any]:
-        """Server-side fuzzy model search (/search/{q}); models only."""
-        doc = self.client._get(f"/search/{urllib.parse.quote(str(q), safe='')}")
+        """Server-side fuzzy model search (/search/{q}); models only.
+        The query is sent verbatim (percent-encoded): whether /search is
+        LIKE-backed is unverified (live probing of Sanger CMP is
+        license-gated), so no escaping is applied there — only the
+        dots-only segment guard."""
+        doc = self.client._get(f"/search/{seg(str(q))}")
         rows = [shape_model_row(d) for d in doc.get("data") or []
                 if d.get("type") == "model"]
         rows.sort(key=lambda r: r["model_id"])
         return {"query": q, "count": len(rows), "models": rows}
 
-    # ----------------------------------------------- gene dependencies
+
 
     def gene_dependencies(self, gene_symbol: str,
                           model_id: str | None = None) -> dict[str, Any]:
@@ -117,7 +129,7 @@ class DepMapModels:
         return {"gene": gene, "model_id": model_id, "count": total,
                 "dependencies": sort_dependencies(rows)}
 
-    # ------------------------------------------------------ gene search
+
 
     def search_genes(self, q: str, exact: bool = False) -> dict[str, Any]:
         """Gene search by symbol. exact=True -> op eq; else case-insensitive
@@ -127,7 +139,7 @@ class DepMapModels:
         if exact:
             spec = [{"name": "symbol", "op": "eq", "val": q}]
         else:
-            spec = [{"name": "symbol", "op": "ilike", "val": f"%{q}%"}]
+            spec = [{"name": "symbol", "op": "ilike", "val": f"%{_like_literal(q)}%"}]
         params = {"filter": self.client._filter(spec)}
         rows, total = [], 0
         for row, count in self.client._paged("/genes", params):
@@ -139,7 +151,7 @@ class DepMapModels:
         rows.sort(key=lambda r: r["gene_id"])
         return {"query": q, "exact": exact, "count": total, "genes": rows}
 
-    # ---------------------------------------------------------- helpers
+
 
     def _resolve_gene(self, symbol: str) -> dict[str, Any]:
         spec = [{"name": "symbol", "op": "eq", "val": symbol}]

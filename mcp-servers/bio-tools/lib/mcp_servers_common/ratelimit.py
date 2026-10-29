@@ -2,7 +2,7 @@
 
 The bio aggregate runs every domain server in ONE process, so per-instance
 throttles multiply: five independent NCBI-facing clients each pacing at
-<=2 req/s sum to ~10 req/s against NCBI's 3 req/s keyless cap (#2875 review).
+<=2 req/s sum to ~10 req/s against NCBI's 3 req/s keyless cap.
 This module is the shared gate: every client that talks to a shared upstream
 host reserves its slot here, keyed by netloc, so the politeness interval is
 enforced across the whole process instead of per client instance.
@@ -26,12 +26,12 @@ class HostPacer:
     """Min-interval gate per netloc. One shared instance paces the process;
     tests may construct private instances with fake sleep/clock."""
 
-    # Upstreams whose rate limit is per source IP across ALL their hosts —
-    # every netloc ending in one of these collapses to the suffix as its
-    # pacing key. NCBI's keyless ~3 req/s cap covers eutils.ncbi.nlm.nih.gov
-    # AND www.ncbi.nlm.nih.gov (idconv, GEO acc.cgi) together; independent
-    # per-netloc budgets could interleave to ~4 req/s at one NCBI IP
-    # (#2875 review 3386234844).
+
+
+
+
+
+
     SHARED_BUDGET_SUFFIXES = ("ncbi.nlm.nih.gov",)
 
     def __init__(self, sleep=time.sleep, clock=time.monotonic) -> None:
@@ -76,9 +76,9 @@ def retry_after_seconds(header_value, fallback: float, cap: float = 60.0) -> flo
     bare ``isdigit()`` gate silently discarded it) are clamped to
     ``[0, cap]``; HTTP-dates, garbage, negatives, and NaN fall back to
     ``fallback`` (hostile ``Retry-After: -1``/``nan`` parse cleanly via
-    float() but make ``time.sleep`` raise ValueError — review 3390063507).
-    THE fleet-wide predicate (promoted from uniprot_fetch per #2875 review
-    3387178901 / bench census 3389708033): every hand-rolled retry loop
+    float() but make ``time.sleep`` raise ValueError).
+    THE fleet-wide predicate (promoted from uniprot_fetch): every
+    hand-rolled retry loop
     routes its Retry-After through here — the census pin in
     test_operon_deltas rejects any raw ``float(retry_after)``/``isdigit``
     gate outside this module.
@@ -89,12 +89,12 @@ def retry_after_seconds(header_value, fallback: float, cap: float = 60.0) -> flo
         v = float(header_value)
     except ValueError:
         return fallback
-    if v != v or v < 0:  # NaN (v != v) or negative: hostile/meaningless
+    if v != v or v < 0:
         return fallback
     return min(v, cap)
 
 
-try:  # urllib3 ships with requests; fleet clients using session-level
+try:
     from urllib3.util.retry import Retry as _Urllib3Retry
 
     class CappedRetry(_Urllib3Retry):
@@ -103,17 +103,17 @@ try:  # urllib3 ships with requests; fleet clients using session-level
         urllib3 honours Retry-After with NO ceiling when
         respect_retry_after_header=True (its default), so a single
         `Retry-After: 86400` pins the calling worker thread for a day —
-        the same class of bug as the hand-rolled retry loops capped in the
-        #2875 robustness pass. Use this instead of Retry for any
+        the same class of bug as the hand-rolled retry loops this module
+        caps. Use this instead of Retry for any
         session-mounted adapter."""
 
         RETRY_AFTER_CAP_S = 60.0
 
-        def get_retry_after(self, response):  # type: ignore[override]
+        def get_retry_after(self, response):
             retry_after = super().get_retry_after(response)
             if retry_after is None:
                 return None
             return min(retry_after, self.RETRY_AFTER_CAP_S)
 
-except ImportError:  # pragma: no cover — urllib3 always present via requests
-    CappedRetry = None  # type: ignore[assignment]
+except ImportError:
+    CappedRetry = None

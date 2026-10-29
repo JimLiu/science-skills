@@ -35,10 +35,10 @@ from mcp_servers_common.ratelimit import retry_after_seconds
 BASE_URL = "https://api.fda.gov/drug/drugsfda.json"
 PAGE_LIMIT = 1000
 SKIP_CAP = 25_000
-MAX_RETRIEVABLE = SKIP_CAP + PAGE_LIMIT  # 26,000
-SORT = "application_number:asc"  # keyword field; .exact does not exist here
+MAX_RETRIEVABLE = SKIP_CAP + PAGE_LIMIT
+SORT = "application_number:asc"
 
-#: count= fields verified to work, mapping friendly name -> API field.
+
 COUNT_FIELDS = {
     "sponsor_name": "sponsor_name",
     "application_number": "application_number",
@@ -67,7 +67,7 @@ class RetrievalResult:
 
 @dataclass
 class CountResult:
-    buckets: list[dict]  # [{"term": ..., "count": ...}] in API order
+    buckets: list[dict]
     bucket_sum: int = 0
     http_requests: int = 0
 
@@ -96,7 +96,7 @@ class OpenFDADrugsFDAClient:
         self.request_count = 0
         self.bytes_downloaded = 0
 
-    # -- transport -----------------------------------------------------
+
 
     def close(self) -> None:
         self._session.close()
@@ -134,7 +134,7 @@ class OpenFDADrugsFDAClient:
             return resp.json()
         raise RuntimeError("unreachable")
 
-    # -- public surface --------------------------------------------------
+
 
     def get_application(self, app_number: str) -> Optional[dict]:
         """Fetch one application by NDA/ANDA/BLA number; None if absent."""
@@ -142,7 +142,7 @@ class OpenFDADrugsFDAClient:
         result = self.retrieve(spec)
         if not result.records:
             return None
-        if len(result.records) > 1:  # application_number is unique upstream
+        if len(result.records) > 1:
             raise RuntimeError(
                 f"{app_number}: expected 1 record, got {len(result.records)}"
             )
@@ -171,7 +171,7 @@ class OpenFDADrugsFDAClient:
             body = self._get(
                 {"search": search, "sort": SORT, "limit": PAGE_LIMIT, "skip": skip}
             )
-            if body is None:  # zero matches
+            if body is None:
                 return RetrievalResult(
                     total=0, records=[], last_updated=None,
                     http_requests=self.request_count - req0,

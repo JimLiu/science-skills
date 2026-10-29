@@ -40,8 +40,8 @@ META = {
     "packages": ["scvi", "scgpt", "scanpy", "anndata", "cell2location", "torch"],
     "gpu_default": "A100",
     "supersedes": ["scvi", "scgpt"],
-    # JOB-time only (see proteomics_jax_gpu for the field contract): the
-    # documented workflows run on user-staged checkpoints/inputs only.
+
+
     "egress_domains": [],
 }
 
@@ -54,14 +54,14 @@ def build(
     secrets = secrets or {}
     img = (
         modal.Image.debian_slim(python_version="3.11")
-        # debian_slim has no LANG → Python defaults to ASCII for files/stdout;
-        # any em-dash/arrow in agent-authored text raises UnicodeEncodeError.
+
+
         .env({"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "PYTHONIOENCODING": "utf-8"})
         .apt_install("git")
         .pip_install("torch==2.5.1")
-        # scGPT first: its deps cap scvi-tools<1.0. Install --no-deps to
-        # keep our pinned scvi-tools intact (scGPT works fine with 1.4.2;
-        # the cap is conservative).
+
+
+
         .pip_install(
             f"scgpt @ git+https://github.com/bowang-lab/scGPT@{_SCGPT_SHA}",
             extra_options="--no-deps",
@@ -74,24 +74,24 @@ def build(
             "leidenalg~=0.10",
             "igraph~=0.11",
             "numpy~=2.0",
-            # scGPT import-time deps skipped by --no-deps. lint_byoc_envs
-            # requires ==/~= pins; ~=2.20 is PEP-440 for ">=2.20, <3" — the
-            # constraint we actually want (datasets 3.x renamed APIs scbank
-            # touches). ipython~=9.0 matches the validated build (unpinned
-            # resolved to 9.x; scgpt only needs the top-level
-            # get_ipython() which is stable across 8/9).
+
+
+
+
+
+
             "ipython~=9.0",
             "datasets~=2.20",
         )
-        # Import smoke at IMAGE BUILD time (CPU-only — none of these init
-        # CUDA on import). Fails the build instead of shipping an image that
-        # ImportErrors at runtime. pip exits 0 on all three breaks above
-        # (--no-deps gaps and removed-internal-symbol regressions are
-        # invisible to the resolver), so this is the only place they surface.
+
+
+
+
+
         .run_commands(
             "python -c 'import torch, scanpy, anndata, scvi, scgpt, cell2location'"
         )
     )
-    # No HYDRATE: scGPT/scvi checkpoints are task-specific; user picks via
-    # scgpt.load_pretrained(...) / scvi.model.X.load(...) at job time.
+
+
     return img, {}, {}

@@ -18,31 +18,34 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import reject_blank
 from mcp_servers_common.errors import raise_on_error_payload
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp_servers_common.ua import (
     ContactEmailRequired, product_ua, require_contact_email)
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
-mcp = FastMCP("mcp-variants")
 
-# Deliberate change vs tooluniverse/gnomad (defaulted to gnomad_r3, which is
-# genome-only and missing r4-called variants entirely). See README.
+
+mcp = GuardedFastMCP("mcp-variants")
+
+
+
 DEFAULT_DATASET = "gnomad_r4"
 DEFAULT_SV_DATASET = "gnomad_sv_r4"
 DEFAULT_CADD_VERSION = "GRCh38-v1.7"
 
-# NCBI asks clients to identify themselves (ClinVar/dbSNP tools below).
-# Precedence (legal Y12): NCBI_EMAIL > user-consented OPERON_CONTACT_EMAIL >
-# structured contact_email_required tool result. Resolved lazily inside the
-# per-process client factories so import never fails and the message reaches
-# the agent as a clean tool result, not a server-startup crash.
+
+
+
+
+
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY") or None
 
 
@@ -50,8 +53,8 @@ def _contact_required_result(e: ContactEmailRequired) -> dict:
     return {"error": "contact_email_required", "message": str(e)}
 
 
-# One fleet tool instance per process; fleet clients pace/retry internally
-# (gnomAD >= 2 s between requests, CADD >= 0.5 s).
+
+
 @lru_cache(maxsize=1)
 def _gnomad():
     from gnomad_variants import GnomadVariants
@@ -69,11 +72,11 @@ def _clinvar():
     from clinvar_records import ClinVarClient, ClinVarRecords
     client = ClinVarClient(
         email=require_contact_email(), tool="mcp-bio", api_key=NCBI_API_KEY)
-    # The fleet client builds its own UA as f"{tool}/0.1 ({email}; ...)",
-    # which http.client latin-1-encodes — an IDN address would crash every
-    # request (review 3464861850). Override with the ASCII-safe per-install
-    # UA; the email still goes via the URL-encoded `email=` query param.
-    client.session.headers["User-Agent"] = product_ua("clinvar-records")
+
+
+
+
+    client.session.headers["User-Agent"] = product_ua()
     return ClinVarRecords(client)
 
 
@@ -82,11 +85,11 @@ def _dbsnp():
     from dbsnp_records import DbsnpClient, DbsnpRecords
     client = DbsnpClient(
         email=require_contact_email(), tool="mcp-bio", api_key=NCBI_API_KEY)
-    client.session.headers["User-Agent"] = product_ua("dbsnp-records")
+    client.session.headers["User-Agent"] = product_ua()
     return DbsnpRecords(client)
 
 
-# --------------------------------------------------------------- gnomAD ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 def get_variant(variant_id: str, dataset: str = DEFAULT_DATASET) -> dict:
@@ -311,7 +314,7 @@ def mitochondrial_variants(gene_symbol: str | None = None,
                                             dataset=dataset)
 
 
-# ----------------------------------------------------------------- CADD ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 def cadd_variant_score(chrom: str, pos: int, ref: str, alt: str,
@@ -383,12 +386,12 @@ def cadd_range_scores(chrom: str, start: int, end: int,
     return _cadd().range_scores(chrom, start, end, version=version)
 
 
-# ------------------------------------------------------- ClinVar (direct) ---
-# Direct NCBI ClinVar lookups (esearch/esummary). Complements the gnomAD
-# ClinVar mirror (``clinvar_variants`` above) with what the mirror lacks:
-# review status + gold stars per classification axis, last-evaluated dates,
-# submission (SCV) counts, condition/trait ontology xrefs, and the somatic
-# clinical-impact + oncogenicity classifications.
+
+
+
+
+
+
 
 @mcp.tool(annotations=READ_ONLY)
 @raise_on_error_payload
@@ -430,6 +433,10 @@ def clinvar_search(query: str, max_records: int = 50) -> dict:
     Quirk: NCBI E-utilities intermittently returns HTTP 500 under load —
     retry once more a few seconds later if that surfaces.
     """
+
+
+
+    reject_blank(query=query)
     try:
         return _clinvar().search(query, retmax=max_records)
     except ContactEmailRequired as e:
@@ -503,7 +510,7 @@ def clinvar_variant_by_rsid(rsid: str, max_records: int = 50) -> dict:
         return _contact_required_result(e)
 
 
-# ----------------------------------------------------------------- dbSNP ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 @raise_on_error_payload
@@ -582,10 +589,10 @@ def dbsnp_search_by_region(chrom: str, start: int, stop: int,
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

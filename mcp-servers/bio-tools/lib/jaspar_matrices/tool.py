@@ -11,11 +11,11 @@ upstream, so callers get the filter they asked for.
 """
 from __future__ import annotations
 
-import urllib.parse
+from mcp_servers_common.pathseg import seg
 
 from .client import JasparClient, JasparApiError
 
-PAGE_SIZE = 1000  # server silently caps page_size at 1000 (verified 2026-06-08)
+PAGE_SIZE = 1000
 
 
 def _walk(client: JasparClient, path: str, params: dict) -> dict:
@@ -37,7 +37,7 @@ def _walk(client: JasparClient, path: str, params: dict) -> dict:
     return {"count": count, "results": results}
 
 
-# -- matrix detail / versions -----------------------------------------------
+
 
 def get_matrix(client: JasparClient, matrix_id: str) -> dict:
     """Full record for one versioned matrix ID (e.g. 'MA0002.2'), incl. PFM."""
@@ -45,18 +45,17 @@ def get_matrix(client: JasparClient, matrix_id: str) -> dict:
         raise ValueError(
             f"{matrix_id!r} is a base ID, not a versioned matrix ID; "
             "use matrix_versions() to enumerate versions")
-    return client.get_json(f"/matrix/{urllib.parse.quote(str(matrix_id), safe='')}/")
+    return client.get_json(f"/matrix/{seg(matrix_id)}/")
 
 
 def matrix_versions(client: JasparClient, base_id: str) -> dict:
     """All versions for a base ID (e.g. 'MA0002'); count-verified."""
     if "." in base_id:
         base_id = base_id.split(".")[0]
-    return _walk(client,
-                 f"/matrix/{urllib.parse.quote(str(base_id), safe='')}/versions/", {})
+    return _walk(client, f"/matrix/{seg(base_id)}/versions/", {})
 
 
-# -- matrix listing / search -------------------------------------------------
+
 
 def list_matrices(client: JasparClient, collection: str | None = None,
                   tax_group: str | None = None, tax_id: int | str | None = None,
@@ -80,7 +79,7 @@ def list_matrices(client: JasparClient, collection: str | None = None,
     })
 
 
-# -- catalogs -----------------------------------------------------------------
+
 
 def list_species(client: JasparClient) -> dict:
     """All species with profiles in JASPAR (tax_id + name); count-verified."""

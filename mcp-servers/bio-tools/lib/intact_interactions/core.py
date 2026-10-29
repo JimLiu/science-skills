@@ -14,9 +14,9 @@ from typing import Any
 
 from .client import IntActClient, IntActError
 
-# Page size used for the full sweep. The service accepted 1000 rows/page in
-# probing; 500 keeps individual responses comfortably small (~0.5 MB on the
-# wire with gzip) while still needing few requests per query.
+
+
+
 DEFAULT_PAGE_SIZE = 500
 
 SEARCH_PATH = "interaction/findInteractionWithFacet"
@@ -25,9 +25,9 @@ INTERACTOR_PATH = "interactor/findInteractor"
 COUNT_PATH = "interaction/countInteractionResult"
 
 
-# --------------------------------------------------------------------------- #
-# Record shaping
-# --------------------------------------------------------------------------- #
+
+
+
 
 def _strip_db_suffix(identifier: str | None) -> str | None:
     """'P04637 (uniprotkb)' -> 'P04637'; passthrough for None."""
@@ -100,9 +100,9 @@ def canonical_json(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
 
 
-# --------------------------------------------------------------------------- #
-# Full retrieval
-# --------------------------------------------------------------------------- #
+
+
+
 
 def fetch_interactions(
     query: str,
@@ -194,9 +194,9 @@ def fetch_interactions(
             client.close()
 
 
-# --------------------------------------------------------------------------- #
-# Interactor-centric endpoints (used for the accuracy-gate cross-check)
-# --------------------------------------------------------------------------- #
+
+
+
 
 def resolve_interactors(
     query: str, client: IntActClient | None = None, page_size: int = 100
@@ -277,9 +277,9 @@ def count_interactions_for_interactor(
             client.close()
 
 
-# --------------------------------------------------------------------------- #
-# Naive baseline (benchmark only — NOT part of the tool API)
-# --------------------------------------------------------------------------- #
+
+
+
 
 def naive_first_page(query: str, client: IntActClient | None = None) -> dict[str, Any]:
     """The naive pattern this tool replaces: a single GET to

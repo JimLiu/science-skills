@@ -28,13 +28,15 @@ def lr_sdk():
 
 
 def litrev_contact() -> str | None:
-    """User contact email for polite-pool API headers; None if unavailable/declined."""
-    # get_user_email() returns the address as a plain str and raises
-    # host.ContactEmailUnavailable (ContactEmailDeclined is a subclass)
-    # when there is no address. The bare `except Exception` deliberately
-    # also covers host-call failures (this helper runs in the analysis
-    # kernel, where the host refuses the call outright): the polite-pool
-    # `mailto:` UA suffix is best-effort, never worth failing a fetch.
+    """User contact email for polite-pool API headers (CrossRef/doi.org
+    ONLY — never sent to OpenAlex, which does not take a contact
+    email); None if unavailable/declined."""
+
+
+
+
+
+
     try:
         r = lr_sdk().get_user_email()
     except Exception:
@@ -42,11 +44,217 @@ def litrev_contact() -> str | None:
     return (r or None) if isinstance(r, str) else None
 
 
+def litrev_user_agent(contact: str | None = None) -> str:
+    """The product's User-Agent, with `contact` added when the header can carry
+    it. No version: code in a cell cannot see the app's."""
+    ua = "Claude-Science (+https://claude.com/product/claude-science)"
+    if contact and contact.isascii() and not re.search(r"[\x00-\x20\x7f()\\]", contact):
+        ua = f"{ua[:-1]}; mailto:{contact})"
+    return ua
+
+
+def litrev_openalex_key() -> str:
+    """The OpenAlex API key — REQUIRED on every api.openalex.org request
+    (keyless calls fail with 409/429; OpenAlex takes no mailto
+    parameter). Env first (OPENALEX_API_KEY is in this kernel's environment
+    only when the python call DECLARED the stored OpenAlex credential —
+    `credentials=["OPENALEX_API_KEY"]`, or the credential's name as listed
+    under Available Credentials — and the user approved it; an undeclared
+    cell has no credential env vars),
+    then the host ask (repl kernel — may prompt the user once; the accepted
+    key is saved). Raises RuntimeError with the host's
+    actionable guidance when no key is available — in an analysis cell that
+    did not declare the credential, re-run the cell declaring it rather than
+    skipping; callers must NOT fall back to anonymous calls."""
+    import os
+    k = os.environ.get("OPENALEX_API_KEY")
+    if k:
+        return k
+    try:
+        k = lr_sdk().credentials.request("openalex")
+    except Exception as e:
+
+
+
+
+
+
+        if type(e).__name__ in ("CredentialUnavailable", "CredentialDeclined"):
+            raise
+        raise RuntimeError(
+            "OpenAlex requires a free API key and none reached this cell "
+            "(%s). If an OpenAlex credential is stored (Available "
+            "Credentials), re-run this cell DECLARING it — "
+            "credentials=[\"OPENALEX_API_KEY\"] on the python call; an "
+            "undeclared cell receives no credentials. Otherwise skip "
+            "OpenAlex-backed steps (search_openalex / expand_citations); "
+            "keyless calls are unsupported. The user can add a key under "
+            "Customize → Credentials → OpenAlex "
+            "(free at https://openalex.org/settings/api)." % e
+        ) from None
+
+
+
+    if isinstance(k, str) and k:
+        os.environ["OPENALEX_API_KEY"] = k
+    return k
+
+
+LITREV_OPENALEX_REDIRECTED = (
+    "OpenAlex answered this request with a redirect that was not followed. "
+    "This says nothing about the API key: skip this look-up or try it "
+    "again later."
+)
+
+
+def litrev_openalex_bearer(key: str) -> str:
+    """The ``Authorization`` header value that carries `key`. Raises
+    RuntimeError, saying what to do, for a key that is not 8 to 512
+    characters of visible ASCII (the app's own rule for a key it saves)."""
+    if not (8 <= len(key) <= 512 and key.isascii() and key.isprintable()
+            and " " not in key):
+        raise RuntimeError(
+            "The saved OpenAlex API key can't be used as it is. Use 8 to "
+            "512 characters: the letters A to Z (capital or small), digits "
+            "and keyboard punctuation marks, with no spaces or invisible "
+            "characters. Copy it again from "
+            "https://openalex.org/settings/api and save it under Customize "
+            "→ Credentials → OpenAlex. Do not retry anonymously."
+        )
+    return "Bearer " + key
+
+
+def litrev_openalex_open(url: str, bearer: str | None, timeout: float):
+    """Open a GET of `url`, with `bearer` as its ``Authorization`` header
+    when one is given. A redirect is followed, with the header, only while
+    it stays on https://api.openalex.org. One that names any other address
+    raises RuntimeError; one urllib will not follow raises its HTTPError."""
+
+    class StayOnOpenAlex(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            to = urllib.parse.urlsplit(newurl)
+            if to.scheme != "https" or to.netloc.lower() not in (
+                    "api.openalex.org", "api.openalex.org:443"):
+                raise RuntimeError(LITREV_OPENALEX_REDIRECTED)
+            return super().redirect_request(
+                req, fp, code, msg, headers, newurl)
+
+    headers = {"User-Agent": litrev_user_agent()}
+    if bearer is not None:
+        headers["Authorization"] = bearer
+    req = urllib.request.Request(url, headers=headers)
+    opener = urllib.request.build_opener(StayOnOpenAlex)
+    return opener.open(req, timeout=timeout)
+
+
+def litrev_openalex_key_ok(key: str, timeout: float = 10) -> bool | None:
+    """Cheap key-aliveness probe of /rate-limit, carrying ONLY the key.
+    With no other query parameters, a 4xx here cannot be a bad-parameter
+    refusal (per the host's credential-ask status matrix), so it cleanly
+    disambiguates a dual-cause request-path 403. The key goes first as
+    api_key in the query, the form OpenAlex documents for this address.
+    Only if that is refused (a 4xx other than 429) is the check sent once
+    more, with the key as the bearer header the requests use and no query:
+    a proxy that drops the query leaves the header. Nobody has yet seen
+    /rate-limit read that header; if it does not, this second step is
+    answered as a keyless request and changes nothing. Returns True when
+    the key authenticates (2xx, or 429 = authenticated but over budget),
+    False when it is refused both ways (or refused in the query and unable
+    to go in a header), None when unknown (network trouble, a 5xx, or a
+    redirect that is not followed) — callers treat None like True
+    (soft-degrade)."""
+
+    def ask(url: str, bearer: str | None) -> bool | None:
+        try:
+            with litrev_openalex_open(url, bearer, timeout):
+                return True
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                return True
+            return False if 400 <= e.code < 500 else None
+        except Exception:
+            return None
+
+    base = "https://api.openalex.org/rate-limit"
+    first = ask(base + "?api_key=" + urllib.parse.quote(key, safe=""), None)
+    if first is not False:
+        return first
+    try:
+        bearer = litrev_openalex_bearer(key)
+    except RuntimeError:
+        return False
+    return ask(base, bearer)
+
+
+def litrev_openalex_get(url: str, timeout: float = 15) -> dict | None:
+    """GET an api.openalex.org URL with the required key as a bearer header
+    (and NO ``mailto`` anywhere — param or UA). Raises RuntimeError with an
+    actionable message for an unsendable key, a redirect not followed, on
+    401/409 (key rejected/required) and on a 429 that survives one 2 s
+    retry (usually the daily budget, reset 00:00 UTC). A 403 is dual-cause on
+    request paths: key rejected OR invalid query parameters (bad ``filter=``/
+    ``select=`` values; per the host's credential-ask status matrix) — so it is
+    disambiguated with a tiny /rate-limit probe (two requests at most): key
+    confirmed dead → raise (otherwise a sweep silently continues with a dead
+    key); key alive or probe inconclusive → return None (soft-degrade, so
+    callers' fallbacks, e.g. the authorless ``select`` retry in
+    expand_citations, still run). Returns None on all other errors."""
+    key = litrev_openalex_key()
+    bearer = litrev_openalex_bearer(key)
+    for attempt in (0, 1):
+        try:
+            with litrev_openalex_open(url, bearer, timeout) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if 300 <= e.code < 400:
+                raise RuntimeError(LITREV_OPENALEX_REDIRECTED) from None
+            if e.code in (401, 409):
+                raise RuntimeError(
+                    "OpenAlex rejected the API key (HTTP %d). Re-check it "
+                    "under Customize → Credentials → OpenAlex against "
+                    "https://openalex.org/settings/api — do not retry "
+                    "anonymously." % e.code
+                ) from None
+            if e.code == 403:
+
+
+
+                if litrev_openalex_key_ok(key, timeout) is False:
+                    raise RuntimeError(
+                        "OpenAlex rejected the API key (HTTP 403, and the "
+                        "key also failed a direct /rate-limit check). "
+                        "Re-check it under Customize → Credentials → "
+                        "OpenAlex against "
+                        "https://openalex.org/settings/api — do not retry "
+                        "anonymously."
+                    ) from None
+                return None
+            if e.code == 429:
+
+
+
+                if attempt == 0:
+                    time.sleep(2)
+                    continue
+                raise RuntimeError(
+                    "The OpenAlex API key is over its usage limit (HTTP "
+                    "429) — most commonly the daily budget is exhausted "
+                    "(resets at 00:00 UTC). Do not retry anonymously; "
+                    "continue with non-OpenAlex sources."
+                ) from None
+            return None
+        except RuntimeError as e:
+            if str(e) == LITREV_OPENALEX_REDIRECTED:
+                raise
+            return None
+        except Exception:
+            return None
+    return None
+
+
 def litrev_get(url: str, timeout: float = 15) -> dict | None:
     """GET `url` and JSON-decode. One 2s retry on HTTP 429; None on any error."""
-    c = litrev_contact()
-    ua = "ClaudeScience-literature-review/1.0" + (f" (mailto:{c})" if c else "")
-    ua = ua.encode("ascii", "ignore").decode("ascii")
+    ua = litrev_user_agent(litrev_contact())
     for attempt in (0, 1):
         req = urllib.request.Request(url, headers={"User-Agent": ua})
         try:
@@ -76,15 +284,43 @@ def crossref_year(m: dict) -> int | None:
     return (dp[0] or [None])[0]
 
 
+def short_authors(names: list[str]) -> str | None:
+    """Collapse an author list to note form: first three names,
+    semicolon-separated (names may carry internal commas), then 'et al.'
+    when more authors exist or any entry is nameless. Returns None when the
+    record carries no author names at all.
+
+    Authors ride in every helper's default output so that working notes built
+    from them keep the name next to the DOI and year — an `(Author Year)`
+    citation written from an authorless note gets its names from parametric
+    memory, which supplies plausible names, not the paper's."""
+    kept = [n.strip() for n in names if n and n.strip()]
+    if not kept:
+        return None
+    more = len(names) > 3 or len(kept) < len(names)
+    return "; ".join(kept[:3]) + (" et al." if more else "")
+
+
+def crossref_authors(m: dict) -> str | None:
+    """Note-form author names (family names) from a CrossRef `message` record."""
+    return short_authors(
+        [a.get("family") or a.get("name") or "" for a in (m.get("author") or [])]
+    )
+
+
+def openalex_authors(w: dict) -> str | None:
+    """Note-form author names (full display names) from an OpenAlex work record."""
+    return short_authors(
+        [((a.get("author") or {}).get("display_name") or "") for a in (w.get("authorships") or [])]
+    )
+
+
 def litrev_head(url: str, timeout: float = 10) -> int | None:
     """HEAD `url` WITHOUT following redirects; return the origin server's own
     status (so doi.org returns 302 for a registered DOI and 404 for an
     unregistered one — not the publisher's status). One 2s retry on 429.
     Returns None only when no status could be obtained (connection/timeout)."""
-    c = litrev_contact()
-    ua = ("ClaudeScience-literature-review/1.0" + (f" (mailto:{c})" if c else "")).encode(
-        "ascii", "ignore"
-    ).decode("ascii")
+    ua = litrev_user_agent(litrev_contact())
 
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -108,8 +344,8 @@ def litrev_head(url: str, timeout: float = 10) -> int | None:
 
 def verify_dois(dois: list[str]) -> dict[str, dict]:
     """Resolve each DOI against CrossRef, with a doi.org HEAD fallback for
-    DataCite/mEDRA/arXiv DOIs. Returns {doi: {ok, title?, year?, journal?,
-    retracted?, registry?, error?}} where:
+    DataCite/mEDRA/arXiv DOIs. Returns {doi: {ok, title?, authors?, year?,
+    journal?, retracted?, registry?, error?}} where:
       ok=True  — resolves (CrossRef hit, or doi.org 2xx/3xx);
       ok=False — does NOT resolve (doi.org 404; likely fabricated or typo);
       ok=None  — could not be verified (network/transient/5xx); do not flag as
@@ -119,11 +355,11 @@ def verify_dois(dois: list[str]) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for d in dois:
         d = d.strip()
-        # No registration agency uses `.`/`..`/empty path segments in a DOI
-        # suffix; reject up-front so a server/CDN that dot-segment-normalizes
-        # can't make a fabricated identifier appear to resolve. Decode the WHOLE
-        # string first then split, so encoded `..` (`%2E%2E`) and encoded
-        # slashes carrying `..` (`a%2F..%2Fb`) both surface as a `..` segment.
+
+
+
+
+
         segs = urllib.parse.unquote(d).split("/")
         if any(seg in ("", ".", "..") for seg in segs[1:]):
             out[d] = {"ok": False, "error": "dot-segment in DOI"}
@@ -143,14 +379,15 @@ def verify_dois(dois: list[str]) -> dict[str, dict]:
             out[d] = {
                 "ok": True,
                 "title": title,
+                "authors": crossref_authors(m),
                 "year": crossref_year(m),
                 "journal": (m.get("container-title") or [""])[0],
                 "retracted": retracted,
                 "registry": "crossref",
             }
             continue
-        # CrossRef miss OR transient — doi.org is the authoritative resolver
-        # across all registration agencies, so its verdict decides ok.
+
+
         code = litrev_head(f"https://doi.org/{enc}")
         if code is not None and 200 <= code < 400:
             out[d] = {"ok": True, "registry": "non-crossref", "retracted": None}
@@ -163,7 +400,7 @@ def verify_dois(dois: list[str]) -> dict[str, dict]:
 
 def crossref_lookup(ref_string: str) -> dict | None:
     """Find a DOI from a free-text citation (author/title/year). Returns the
-    top CrossRef match as {doi, title, year, score} or None. Use when you have
+    top CrossRef match as {doi, title, authors, year, score} or None. Use when you have
     a citation's details but not its DOI — this is the alternative to guessing."""
     q = urllib.parse.quote(ref_string)
     j = litrev_get(f"https://api.crossref.org/works?query.bibliographic={q}&rows=1")
@@ -174,6 +411,7 @@ def crossref_lookup(ref_string: str) -> dict | None:
     return {
         "doi": m.get("DOI"),
         "title": (m.get("title") or [""])[0],
+        "authors": crossref_authors(m),
         "year": crossref_year(m),
         "score": m.get("score"),
     }
@@ -181,15 +419,16 @@ def crossref_lookup(ref_string: str) -> dict | None:
 
 def search_openalex(query: str, n: int = 10, filters: str = "") -> list[dict]:
     """Search OpenAlex (open scholarly index, ~250M works). Returns up to n
-    hits as [{doi, title, year, cited_by, venue, oa_url}]. `filters` is an
-    OpenAlex filter string, e.g. 'from_publication_date:2022-01-01'."""
+    hits as [{doi, title, authors, year, cited_by, venue, oa_url}]. `filters` is an
+    OpenAlex filter string, e.g. 'from_publication_date:2022-01-01'.
+    Raises RuntimeError when no API key is available, OpenAlex rejects it
+    or reports the daily budget exhausted, or a redirect is not followed:
+    never retry anonymously; go on with the non-OpenAlex sources."""
     q = urllib.parse.quote(query)
     flt = f"&filter={filters}" if filters else ""
-    c = litrev_contact()
-    mailto = f"&mailto={urllib.parse.quote(c)}" if c else ""
-    j = litrev_get(
+    j = litrev_openalex_get(
         f"https://api.openalex.org/works?search={q}&per-page={min(n, 25)}"
-        f"&sort=cited_by_count:desc{flt}{mailto}"
+        f"&sort=cited_by_count:desc{flt}"
     )
     out = []
     for w in (j or {}).get("results", [])[:n]:
@@ -199,6 +438,7 @@ def search_openalex(query: str, n: int = 10, filters: str = "") -> list[dict]:
             {
                 "doi": (w.get("doi") or "").replace("https://doi.org/", ""),
                 "title": w.get("title"),
+                "authors": openalex_authors(w),
                 "year": w.get("publication_year"),
                 "cited_by": w.get("cited_by_count"),
                 "venue": venue,
@@ -213,13 +453,18 @@ def expand_citations(doi: str, n_backward: int = 50, n_forward: int = 15) -> dic
     `references` is the backward step — the paper's own bibliography (outgoing
     citations), via `filter=cited_by:<id>`, sorted most-cited first.
     `cited_by` is the forward step — papers that cite this one (incoming
-    citations), via `filter=cites:<id>`. Each entry is {doi, title, year,
-    cited_by}. Three OpenAlex requests total; returns empty lists when the DOI
-    is unknown to OpenAlex or the list endpoint is rate-limited."""
-    c = litrev_contact()
-    mailto = f"&mailto={urllib.parse.quote(c)}" if c else ""
+    citations), via `filter=cites:<id>`. Each entry is {doi, title, authors,
+    year, cited_by}. Three OpenAlex requests total (up to five when a degraded
+    list query retries without `authorships`); returns empty lists when the
+    DOI is unknown to OpenAlex or a transient error hit the list endpoint.
+    Raises RuntimeError with actionable guidance when no API key is
+    available, OpenAlex rejects it (401/409), the key is over its usage
+    limit (429 after one retry) or a redirect is not followed. Do not retry
+    anonymously."""
     enc = quote_doi_path(doi)
-    work = litrev_get(f"https://api.openalex.org/works/doi:{enc}?select=id{mailto}")
+    work = litrev_openalex_get(
+        f"https://api.openalex.org/works/doi:{enc}?select=id"
+    )
     work_id = ((work or {}).get("id") or "").rsplit("/", 1)[-1]
     if not work_id:
         return {"references": [], "cited_by": []}
@@ -231,6 +476,7 @@ def expand_citations(doi: str, n_backward: int = 50, n_forward: int = 15) -> dic
                 {
                     "doi": (w.get("doi") or "").replace("https://doi.org/", ""),
                     "title": w.get("title"),
+                    "authors": openalex_authors(w),
                     "year": w.get("publication_year"),
                     "cited_by": w.get("cited_by_count"),
                 }
@@ -238,11 +484,16 @@ def expand_citations(doi: str, n_backward: int = 50, n_forward: int = 15) -> dic
         return out
 
     def _list(filter_expr: str, n: int) -> list[dict]:
-        j = litrev_get(
+        base = (
             f"https://api.openalex.org/works?filter={filter_expr}"
-            f"&select=doi,title,publication_year,cited_by_count"
-            f"&sort=cited_by_count:desc&per-page={min(n, 100)}{mailto}"
+            f"&sort=cited_by_count:desc&per-page={min(n, 100)}"
         )
+        j = litrev_openalex_get(base + "&select=doi,title,publication_year,cited_by_count,authorships")
+        if j is None:
+
+
+
+            j = litrev_openalex_get(base + "&select=doi,title,publication_year,cited_by_count")
         return _rows((j or {}).get("results", []))
 
     return {

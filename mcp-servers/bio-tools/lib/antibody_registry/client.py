@@ -32,12 +32,12 @@ import requests
 BASE_URL = "https://www.antibodyregistry.org/api"
 USER_AGENT = "bio-tools/antibody-registry (anthropic-experimental)"
 
-#: deepest row reachable without authentication on /fts-antibodies
-#: (page * size > this -> HTTP 401; measured 2026-06-08).
+
+
 ANON_ROW_LIMIT = 500
 
-#: fields that change as the registry curates/re-indexes records; excluded from
-#: canonical comparisons and (by default) from returned records.
+
+
 VOLATILE_FIELDS = frozenset(
     {"curateTime", "lastEditTime", "ix", "showLink", "feedback", "numOfCitation"}
 )
@@ -83,7 +83,7 @@ class AntibodyRegistryClient:
         self.request_count = 0
         self.bytes_downloaded = 0
 
-    # ------------------------------------------------------------------ http
+
     def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         wait = self.min_interval_s - (time.monotonic() - self._last_request_t)
         if wait > 0:
@@ -97,13 +97,13 @@ class AntibodyRegistryClient:
         resp.raise_for_status()
         return resp.json()
 
-    # ----------------------------------------------------------- normalizing
+
     def _norm(self, record: dict[str, Any]) -> dict[str, Any]:
         if self.keep_volatile:
             return dict(sorted(record.items()))
         return {k: v for k, v in sorted(record.items()) if k not in VOLATILE_FIELDS}
 
-    # ----------------------------------------------------------------- API
+
     def search_antibodies(
         self,
         q: str,

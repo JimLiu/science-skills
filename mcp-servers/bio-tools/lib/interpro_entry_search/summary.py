@@ -161,7 +161,7 @@ def summarize_protein_row(row: dict) -> dict:
 
 
 def summarize_proteins(fetched: dict) -> dict:
-    if fetched.get("results") is None:  # count_only mode
+    if fetched.get("results") is None:
         return {"count": fetched.get("count", 0), "results": None}
     rows = [summarize_protein_row(r) for r in fetched["results"]]
     rows.sort(key=lambda r: r["accession"] or "")
@@ -179,7 +179,7 @@ def summarize_proteome_row(row: dict) -> dict:
 
 
 def summarize_proteomes(fetched: dict) -> dict:
-    if fetched.get("results") is None:  # count_only mode
+    if fetched.get("results") is None:
         return {"count": fetched.get("count", 0), "results": None}
     rows = [summarize_proteome_row(r) for r in fetched["results"]]
     rows.sort(key=lambda r: r["accession"] or "")

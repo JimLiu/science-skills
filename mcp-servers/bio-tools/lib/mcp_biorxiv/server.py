@@ -25,8 +25,8 @@ from mcp_servers_common.gate import apply_gate_tier1
 from . import marshal
 from .marshal import biorxiv_json
 
-DEFAULT_WINDOW_DAYS = 60   # original: "If no search method specified, defaults to last 60 days"
-RECENT_COUNT_WINDOW_DAYS = 90  # original: "recent_count searches a 90-day window"
+DEFAULT_WINDOW_DAYS = 60
+RECENT_COUNT_WINDOW_DAYS = 90
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _PUBLISHER_RE = re.compile(r"^10\.\d{4,9}$")
@@ -81,10 +81,10 @@ def _window(args: dict) -> tuple[str, str, int | None]:
     if date_from and date_to:
         return (_check_date(date_from, "date_from"),
                 _check_date(date_to, "date_to"), None)
-    # `is not None`, not truthiness: 0 must be honoured, not silently
-    # coerced to the 60-day default window — the same falsy-coercion class
-    # as chembl limit=0 / cms timeframe=0 (review 3390188549). Tier-1
-    # dispatch does no jsonschema validation, so 0 reaches this handler.
+
+
+
+
     if recent_days is not None:
         return str(today - timedelta(days=int(recent_days))), str(today), None
     if recent_count is not None:
@@ -135,20 +135,20 @@ def _search_window(path_fn, cursor: int, limit: int,
                    recent_count: int | None) -> tuple[list[dict], int]:
     if recent_count is None:
         return _collect(path_fn, cursor, limit)
-    # most recent N of the window: learn the total, then read the tail
+
     _, total, status = _page(path_fn, 0)
     if status == "no posts found" or total == 0:
         return [], 0
     if recent_count == 0:
-        # "0 most recent" is a valid empty page, but `total` must still be
-        # the real window total — _collect(needed=0) would discard the
-        # value learned above and report 0 (review 3390753866).
+
+
+
         return [], total
     start = max(total - recent_count, 0) + cursor
     return _collect(path_fn, start, min(limit, recent_count))
 
 
-# ----------------------------------------------------------------- handlers
+
 def get_categories(args: dict) -> str:
     from biorxiv_fetch.tool import BIORXIV_CATEGORIES
     return biorxiv_json(marshal.categories_response(BIORXIV_CATEGORIES))
@@ -236,9 +236,9 @@ _INTERVALS = {"monthly": "m", "yearly": "y"}
 
 
 def _interval(args: dict) -> str:
-    # Validate like the sibling handlers (cms _page_args, icd-10 _code_type):
-    # descriptive error, not a raw KeyError; `or` also covers
-    # present-with-null (review 3377922624).
+
+
+
     key = args.get("interval") or "monthly"
     if key not in _INTERVALS:
         raise ValueError(
@@ -278,9 +278,9 @@ def build_server() -> Tier1Server:
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py): enforce
-    # mcp_bio/deferred.json exactly like the aggregate. Serve-time only —
-    # build_server() stays pristine for parity tests and the aggregate.
+
+
+
     t1 = build_server()
     apply_gate_tier1(t1)
     t1.run()

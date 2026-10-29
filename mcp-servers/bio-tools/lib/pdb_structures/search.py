@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from .client import PDBClient, PDBError
 
-PAGE_ROWS = 100               # search API page size
-MAX_ROWS_LIMIT = 1000         # hard cap per call (10 pages at 2 req/s ~ 5 s)
+PAGE_ROWS = 100
+MAX_ROWS_LIMIT = 1000
 
-# exptl.method controlled vocabulary (upper-cased before matching)
+
 EXPERIMENTAL_METHODS = {
     "X-RAY DIFFRACTION",
     "ELECTRON MICROSCOPY",
@@ -143,7 +143,7 @@ def search_structures(
             },
         }
         body = client.post_search(payload)
-        if body is None:                      # HTTP 204: zero hits
+        if body is None:
             if records:
                 raise PDBError("search API returned 204 mid-sweep")
             total_count = 0

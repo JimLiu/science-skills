@@ -8,7 +8,7 @@ import requests
 BASE_URL = "https://rfam.org"
 USER_AGENT = "bio-tools-rfam-families/0.1 (anthropic-experimental/bio-tools)"
 DEFAULT_TIMEOUT = 120.0
-MIN_INTERVAL_S = 0.5  # politeness: <= 2 req/s
+MIN_INTERVAL_S = 0.5
 
 
 class RfamApiError(RuntimeError):
@@ -55,7 +55,7 @@ class RfamClient:
     def reset_stats(self) -> None:
         self.stats = {"requests": 0, "bytes": 0}
 
-    # ------------------------------------------------------------------ #
+
 
     def _throttle(self) -> None:
         wait = self.min_interval_s - (time.monotonic() - self._last_request_t)
@@ -72,7 +72,7 @@ class RfamClient:
             raise NotFound(404, url, "not found")
         raise RfamApiError(resp.status_code, url, resp.text[:500])
 
-    # ------------------------------------------------------------------ #
+
 
     def get_json(self, path: str) -> dict:
         """GET ``path`` with ``?content-type=application/json``."""
@@ -107,7 +107,7 @@ class RfamClient:
         self._record(resp)
         return resp
 
-    # -- async sequence search ----------------------------------------- #
+
 
     def submit_search(self, sequence: str) -> dict:
         """POST a nucleotide sequence to /search/sequence.

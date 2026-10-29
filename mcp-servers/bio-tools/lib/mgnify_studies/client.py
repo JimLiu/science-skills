@@ -47,15 +47,15 @@ class MGnifyClient:
         self.page_size = page_size
         self.session = session or requests.Session()
         self.session.headers.update({"Accept": "application/json", "User-Agent": USER_AGENT})
-        # benchmarking instrumentation
+
         self.n_requests = 0
         self.bytes_downloaded = 0
-        self.raw_log: list[str] | None = None  # set to [] to capture raw response bodies
+        self.raw_log: list[str] | None = None
         self._last_request_at = 0.0
 
-    # ------------------------------------------------------------------ #
-    # low level
-    # ------------------------------------------------------------------ #
+
+
+
     def _throttle(self) -> None:
         wait = self.min_interval - (time.monotonic() - self._last_request_at)
         if wait > 0:
@@ -80,7 +80,7 @@ class MGnifyClient:
                 self._last_request_at = time.monotonic()
                 self.n_requests += 1
                 last_err = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(2.0**attempt)
                 continue
             self._last_request_at = time.monotonic()
@@ -92,7 +92,7 @@ class MGnifyClient:
                 retry_after = resp.headers.get("Retry-After", "")
                 delay = retry_after_seconds(retry_after, 2.0**attempt)
                 last_err = MGnifyError(f"HTTP {resp.status_code} from {resp.url}")
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(delay)
                 continue
             resp.raise_for_status()
@@ -103,9 +103,9 @@ class MGnifyClient:
             f"giving up on {url} after {self.max_retries + 1} attempts: {last_err}"
         )
 
-    # ------------------------------------------------------------------ #
-    # pagination
-    # ------------------------------------------------------------------ #
+
+
+
     def get_all(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Retrieve every record of a paginated JSON:API collection.
 

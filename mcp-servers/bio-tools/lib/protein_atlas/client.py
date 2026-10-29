@@ -24,8 +24,8 @@ from dataclasses import dataclass, field
 import requests
 from mcp_servers_common.ratelimit import retry_after_seconds
 
-DEFAULT_BASE_URL = "https://v25.proteinatlas.org"  # HPA release 25.x (pinned)
-WWW_BASE_URL = "https://www.proteinatlas.org"      # rolling latest release
+DEFAULT_BASE_URL = "https://v25.proteinatlas.org"
+WWW_BASE_URL = "https://www.proteinatlas.org"
 USER_AGENT = "bio-tools/protein-atlas-0.1.0"
 
 
@@ -67,11 +67,11 @@ class HpaClient:
         self._last_request_t = 0.0
         self.counters = _Counters()
 
-    # -- accounting -------------------------------------------------------
+
     def reset_counters(self) -> None:
         self.counters = _Counters()
 
-    # -- core -------------------------------------------------------------
+
     def _throttle(self) -> None:
         dt = time.monotonic() - self._last_request_t
         if dt < self.min_interval_s:
@@ -99,7 +99,7 @@ class HpaClient:
                 backoff *= 2
                 continue
             return resp
-        return resp  # pragma: no cover (loop always returns)
+        return resp
 
     def get_json(self, path: str, params: dict | None = None):
         resp = self.get(path, params=params)
@@ -107,7 +107,7 @@ class HpaClient:
             raise HpaError(resp.status_code, resp.url, resp.text[:200])
         return resp.json()
 
-    # -- HPA surfaces -----------------------------------------------------
+
     def gene_json(self, ensg: str) -> dict:
         """Full per-gene record: GET /{ENSG}.json (flat dict)."""
         obj = self.get_json(f"/{urllib.parse.quote(str(ensg), safe='')}.json")

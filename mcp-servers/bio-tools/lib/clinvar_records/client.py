@@ -21,8 +21,8 @@ DEFAULT_MIN_INTERVAL_S = 0.4
 DEFAULT_TIMEOUT_S = 20.0
 DEFAULT_MAX_RETRIES = 1
 RETRY_STATUS = {429, 500, 502, 503, 504}
-# eutils 500s come in short bursts (observed); one retry after a 2 s pause
-# clears most of them while staying inside the <=1-retry budget.
+
+
 BACKOFF_S = 2.0
 
 
@@ -58,7 +58,7 @@ class ClinVarClient:
             {"User-Agent": f"{tool}/0.1 ({email}; python-requests)"})
         self.stats = RequestStats()
 
-    # -- transport ---------------------------------------------------------
+
 
     def _common_params(self) -> dict:
         params = {"tool": self.tool, "email": self.email}
@@ -67,9 +67,9 @@ class ClinVarClient:
         return params
 
     def _throttle(self) -> None:
-        # PROCESS-wide per-host pacing via the shared HostPacer (review
-        # 3393212445) — shares the collapsed NCBI budget with every sibling
-        # client in the aggregate instead of stacking per-instance state.
+
+
+
         pace(EUTILS_BASE, self.min_interval_s)
 
     def _request(self, endpoint: str, data: dict) -> dict:
@@ -114,7 +114,7 @@ class ClinVarClient:
                     f"{endpoint} returned non-JSON: {resp.text[:200]}")
         raise ClinVarApiError(f"{endpoint} retries exhausted: {last_err!r}")
 
-    # -- E-utilities steps ---------------------------------------------------
+
 
     def esearch(self, term: str, retmax: int = 20, retstart: int = 0) -> dict:
         """esearch db=clinvar; returns the ``esearchresult`` dict

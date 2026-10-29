@@ -24,13 +24,13 @@ RETRY_STATUSES = {429, 500, 502, 503, 504}
 class EuropePMCClient:
     base_url: str = BASE_URL
     min_interval_s: float = 0.5
-    # Budget discipline (finding 3406986062): 60s timeout × 3 retries with
-    # 2/4/8s backoff was ~254s worst-case for a SINGLE request — far past the
-    # ~60s MCP transport budget. Bound it: 30s timeout, one retry, capped
-    # backoff. The per-instance throttle matches the sibling alphafold client.
+
+
+
+
     max_retries: int = 1
     timeout_s: float = 30.0
-    # instrumentation
+
     n_requests: int = 0
     bytes_downloaded: int = 0
     _last_request_t: float = field(default=0.0, repr=False)
@@ -39,7 +39,7 @@ class EuropePMCClient:
         self._session = requests.Session()
         self._session.headers.update({"User-Agent": USER_AGENT})
 
-    # ------------------------------------------------------------------ #
+
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_t
         if elapsed < self.min_interval_s:
@@ -69,7 +69,7 @@ class EuropePMCClient:
                 continue
             return resp
 
-    # ------------------------------------------------------------------ #
+
     def search(self, query: str, result_type: str = "core", page_size: int = 100) -> dict:
         """One page of /search as parsed JSON (the tool's batched availability
         queries always fit on one page)."""

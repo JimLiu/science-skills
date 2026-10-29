@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, asdict
 
-# Relations supported by the OLS4 v1 term hierarchy endpoints.
+
 RELATIONS = (
     "parents",
     "children",

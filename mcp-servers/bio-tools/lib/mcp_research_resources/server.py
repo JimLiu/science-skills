@@ -10,18 +10,21 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import reject_blank
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 from grants_gov_search import DEFAULT_STATUSES, GrantsSearchSpec
 
-mcp = FastMCP("mcp-research-resources")
+
+
+mcp = GuardedFastMCP("mcp-research-resources")
 
 
 @lru_cache(maxsize=1)
@@ -36,7 +39,7 @@ def _antibodies():
     return AntibodyRegistryClient()
 
 
-# ----------------------------------------------------------------- Grants.gov
+
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -81,6 +84,12 @@ def search_grants(
          agencyCode, agencyName, oppStatus, openDate, closeDate, alnist, ...}],
          facets?}.
     """
+
+
+
+
+    reject_blank(keyword=keyword, opportunity_number=opportunity_number,
+                 aln=aln)
     statuses = "|".join(opportunity_statuses) if opportunity_statuses else DEFAULT_STATUSES
     spec = GrantsSearchSpec(
         keyword=keyword,
@@ -112,7 +121,7 @@ def search_grants(
     return out
 
 
-# ---------------------------------------------------------- Antibody Registry
+
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -197,10 +206,10 @@ def get_antibody_registry_stats() -> dict:
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

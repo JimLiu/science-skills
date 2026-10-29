@@ -5,12 +5,12 @@ from .client import QuickGOClient
 from .queries import AnnotationQuery
 from .terms import fetch_term_metadata
 
-# QuickGO hard caps
-DOWNLOAD_LIMIT_MAX = 50000      # /annotation/downloadSearch downloadLimit cap
-SEARCH_PAGE_LIMIT_MAX = 200     # /annotation/search limit cap
-DEFAULT_SEARCH_PAGE_SIZE = 25   # what you get if you do not ask for more
 
-# downloadSearch TSV columns (default selectedFields), in served order.
+DOWNLOAD_LIMIT_MAX = 50000
+SEARCH_PAGE_LIMIT_MAX = 200
+DEFAULT_SEARCH_PAGE_SIZE = 25
+
+
 TSV_COLUMNS = [
     "GENE PRODUCT DB", "GENE PRODUCT ID", "SYMBOL", "QUALIFIER", "GO TERM",
     "GO ASPECT", "ECO ID", "GO EVIDENCE CODE", "REFERENCE", "WITH/FROM",
@@ -20,7 +20,7 @@ TSV_COLUMNS = [
 _ASPECT_EXPAND = {"P": "biological_process", "F": "molecular_function",
                   "C": "cellular_component"}
 
-# Field order of the structured record (also the deterministic sort key order).
+
 RECORD_FIELDS = [
     "gene_product_db", "gene_product_id", "symbol", "qualifier", "go_id",
     "go_aspect", "eco_id", "go_evidence", "reference", "with_from",
@@ -154,7 +154,7 @@ def fetch_annotations(client: QuickGOClient, query: AnnotationQuery,
     else:
         records = _fetch_via_download(client, query)
         if total is None and len(records) >= DOWNLOAD_LIMIT_MAX:
-            # downloadSearch silently truncates at the cap -- re-check and page.
+
             total = count_annotations(client, query)
             if total > DOWNLOAD_LIMIT_MAX:
                 records = _fetch_via_paged_search(client, query, total)

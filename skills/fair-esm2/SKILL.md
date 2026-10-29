@@ -43,7 +43,37 @@ ESM-2 code and weights are MIT (Meta AI, github.com/facebookresearch/esm).
 ### Embeddings
 
 ```python
-import torch, esm
+import hashlib, os, torch, esm
+
+# fair-esm downloads its checkpoints through torch.hub with no checksum and
+# unpickles them in full. So fetch the 650M checkpoint and its contact-regression
+# file first, each checked against its sha256, into the folder esm.pretrained
+# reads, so the load below downloads nothing. A cached copy that fails the check
+# is renamed aside (*.rejected, never loaded) or, on a read-only weight mount,
+# stops the cell; a download that fails it is never moved into place. Only this
+# pair is pinned (digests as in remote-compute-modal/env-setup.md), not 8M or 3B.
+ESM2_650M_SHA256 = {
+    "models/esm2_t33_650M_UR50D.pt": "ea9d0522b335a8778dea6535a65301f10208dece28cd5865482b0b1fc446168c",
+    "regression/esm2_t33_650M_UR50D-contact-regression.pt": "8ffe6edbd4173dc8d45c2cd5cb27d43aad77ec26b4c768200c58ae1f96693575",
+}
+def sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+ckpts = os.path.join(torch.hub.get_dir(), "checkpoints")
+os.makedirs(ckpts, exist_ok=True)
+for rel, digest in ESM2_650M_SHA256.items():
+    dst = os.path.join(ckpts, os.path.basename(rel))
+    if os.path.isfile(dst) and sha256_of(dst) != digest:
+        aside, n = dst + ".rejected", 1
+        while os.path.exists(aside):
+            aside, n = f"{dst}.rejected.{n}", n + 1
+        os.rename(dst, aside)
+    if not os.path.isfile(dst):
+        print("fetching", rel, "(checked against its sha256) ...", flush=True)
+        torch.hub.download_url_to_file("https://dl.fbaipublicfiles.com/fair-esm/" + rel, dst, hash_prefix=digest, progress=False)
 
 model, alphabet = esm.pretrained.esm2_t33_650M_UR50D()
 model = model.eval().cuda()
@@ -82,6 +112,8 @@ contacts = out["contacts"][0]         # (L, L)
 | `esm2_t33_650M_UR50D`      | 33     | 1280 | 650 M  | Default embedding model    |
 | `esm2_t36_3B_UR50D`        | 36     | 2560 | 3 B    | Best embeddings, 24 GB+    |
 
+Only the 650M checkpoint and its contact-regression file are fetched against a pinned sha256 (the Embeddings block above); the 8M and 3B checkpoints are not pinned here and come through `torch.hub` unverified — to load one of them, drop the pre-fetch block as well, or the cell still downloads the 2.5 GB 650M pair first.
+
 ## Output format
 
 `out["representations"][layer]` is `(B, L+2, D)`; slice `[ :, 1:-1, : ]` to
@@ -100,26 +132,27 @@ c = host.compute.create(provider)
 job = c.submit_job(
     intent="ESM-2 650M embeddings for 200 sequences — 1×GPU, ~2 min",
     inputs=[
-        {"src": "seqs.fasta", "dst_filename": "seqs.fasta"},
-        {"src": "embed_esm2.py", "dst_filename": "embed_esm2.py"},
+        "seqs.fasta",
+        "embed_esm2.py",
     ],
+    # env activation is host-specific — put it IN the command string
+    # (e.g. "conda run -n <env> python3 embed_esm2.py"; see compute_details)
     command="python3 embed_esm2.py",
-    environment=...,   # env name from compute_details
     outputs=["embeddings.pt"],
-    timeout_seconds=1800,
+    run_timeout_s=1800,
 )
-print(job.job_id)   # cell ends here — kernel never blocks on compute
+# the Job repr just printed itself (id, notes) — cell ends here; the kernel never waits on the job
 ```
 
 Then call the `wait_for_notification` brain-tool. When the
 `compute_done` notification arrives, act on its payload:
 
 ```python
-save_artifacts(payload["featured_files"])   # paths under hpc/<job_id>/
+save_artifacts(payload["output_files"])   # paths under hpc/<job_id>/
 ```
 
-For the full result dict (`output_files`, `remote_workdir`, …), re-enter the
-kernel: `c.attach_job(job_id).result()` then `c.close()`. See the
+For the full record (`files`, `stdout_tail`, `notes`, …), re-enter the
+kernel: `res = c.attach_job(job_id).result()` then `c.close(intent=...)`. See the
 `remote-compute-ssh` / `remote-compute-modal` skill for the orchestration
 details.
 
@@ -133,6 +166,9 @@ mount (path is in `compute_details`) so `esm.pretrained.*` resolves locally.
 | --------------------------------------------- | ---------------------------------- | ------------------------------------- |
 | `ModuleNotFoundError: No module named 'esm.models'` | You want Biohub's `esm` fork, not `fair-esm` | See `esmfold2` skill; this skill uses `esm.pretrained.*` |
 | Slow first call                               | Downloading weights via torch.hub  | Set `TORCH_HOME` to a cached location |
+| `RuntimeError: invalid hash value` from `download_url_to_file` | The 650M download did not match its pinned sha256 (truncated, or the file changed upstream); nothing was moved into place | Re-run the cell once; if it repeats, stop and report it rather than fetching the file another way |
+| A `*.rejected` file in torch.hub's checkpoints folder (`$TORCH_HOME/hub/checkpoints`, default `~/.cache/torch/hub/checkpoints`) | A cached checkpoint failed the check and was renamed aside, not deleted; it is never loaded | Delete it when convenient: if the cell finished, it fetched a verified copy under the original name; if it stopped with `invalid hash value`, see the row above |
+| `OSError: [Errno 30] Read-only file system` from the pre-fetch block, `TORCH_HOME` on a provider's weight mount | The mount's 650M checkpoint or contact-regression file failed its sha256 check, or is not where `TORCH_HOME` points, and a read-only mount cannot be changed; the cell stopped before any load | If `TORCH_HOME` is the path `compute_details` gives, stop and report it: the mount needs rebuilding with a verified pair. Meanwhile a writable `TORCH_HOME` gets the job through (the cell downloads a verified copy) if the host may reach `dl.fbaipublicfiles.com` |
 
 ---
 

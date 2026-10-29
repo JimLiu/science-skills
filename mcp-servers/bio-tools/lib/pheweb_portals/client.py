@@ -11,8 +11,8 @@ Quirks handled here:
   * the client identifies honestly (bio-tools-pheweb UA). An earlier
     vendored version spoofed a browser UA citing "FinnGen 502s non-browser
     UAs" — that claim did NOT reproduce (2026-06-12 probes: honest,
-    python-requests, and empty UAs all 200) and the spoof was removed per
-    counsel review (finding 3406323921). If FinnGen ever does block, the
+    python-requests, and empty UAs all 200) and the spoof was removed.
+    If FinnGen ever does block, the
     fix is an operator conversation, not a spoof;
   * pheweb.jp (BBJ) is GRCh37 while FinnGen is GRCh38 — the registry pins
     the build and every tool output echoes it;
@@ -31,18 +31,18 @@ import requests
 
 from mcp_servers_common.ratelimit import retry_after_seconds
 
-# Honest product UA (finding 3406323921 — same class as the panglaodb
-# counsel cure): identify as the tool, not a browser. The historical
-# "FinnGen 502s bot UAs" rationale for a browser-engine spoof did not
-# reproduce (2026-06-12: r12.finngen.fi/api/autocomplete returns 200 for
-# this UA, for python-requests/2.33.1, and for an empty UA). If an
-# instance starts rejecting honest clients, that's a conversation with
-# the operator, not a spoof.
+
+
+
+
+
+
+
 USER_AGENT = "bio-tools-pheweb/0.1 (anthropic-experimental/bio-tools)"
 
-#: Registry of public PheWeb instances this package speaks to.
-#: capabilities: "variant" (/api/variant/<id>), "gene" (/api/gene_phenos/<g>),
-#: "phenotypes" (/api/phenos full listing), "autocomplete" (/api/autocomplete).
+
+
+
 INSTANCES: dict[str, dict[str, Any]] = {
     "finngen": {
         "label": "FinnGen R12",
@@ -93,7 +93,7 @@ class PhewebClient:
         self.base_url = base_url.rstrip("/")
         self.min_interval_s = min_interval_s
         self.timeout_s = timeout_s
-        self.max_retries = max_retries  # total attempts (2 == one retry)
+        self.max_retries = max_retries
         self.session = session or requests.Session()
         self.session.headers.update({"Accept": "application/json",
                                      "User-Agent": USER_AGENT})
@@ -115,7 +115,7 @@ class PhewebClient:
             except requests.RequestException as exc:
                 self._last_request_t = time.monotonic()
                 last_err = exc
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2 ** attempt, 4))
                 continue
             self._last_request_t = time.monotonic()
@@ -127,7 +127,7 @@ class PhewebClient:
                 last_err = PhewebApiError(f"HTTP {resp.status_code} for {url}")
                 delay = retry_after_seconds(resp.headers.get("Retry-After", ""),
                                             min(2 ** attempt, 4), cap=5.0)
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(delay)
                 continue
             if resp.status_code != 200:
@@ -194,7 +194,7 @@ class PhewebPortals:
                 f"no {capability!r} endpoint; capabilities: "
                 f"{list(row['capabilities'])}")
 
-    # -- endpoints -----------------------------------------------------------
+
 
     def variant_phenos(self, instance: str, variant: str) -> dict[str, Any]:
         """PheWAS rows for one variant. Returns {variant_meta, rows} with
@@ -203,8 +203,8 @@ class PhewebPortals:
         self._require(instance, "variant")
         payload = self._client(instance).get_json(
             f"/api/variant/{_seg(vid)}")
-        # FinnGen nests rows under "results" with variant/annotation blocks;
-        # classic pheweb (BBJ) returns top-level variant fields + "phenos".
+
+
         if "results" in payload:
             rows = payload.get("results") or []
             var = payload.get("variant") or {}

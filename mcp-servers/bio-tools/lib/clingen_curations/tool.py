@@ -25,10 +25,10 @@ class ClinGenCurations:
         self.client = client or ClinGenClient()
         self._validity_rows: list | None = None
         self._dosage_rows: list | None = None
-        self._actionability: dict[str, dict] = {}   # context -> flat payload
+        self._actionability: dict[str, dict] = {}
         self._erepo_cache: dict[tuple, list] = {}
 
-    # -- bulk table fetches (cached) ----------------------------------------
+
 
     def _validity_table(self) -> list:
         if self._validity_rows is None:
@@ -62,7 +62,7 @@ class ClinGenCurations:
             self._actionability[context] = d
         return self._actionability[context]
 
-    # -- public surface ------------------------------------------------------
+
 
     def gene_validity(self, gene: str | None = None) -> dict:
         """Gene-disease validity curations; all 3,600+ or filtered to one gene.

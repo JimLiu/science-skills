@@ -32,7 +32,7 @@ def normalize_rhea_id(rhea_id: str | int) -> str:
 def _sparql_escape(text: str) -> str:
     """Escape for a single-line SPARQL string literal — closes the whole
     control-character class, not just quote/backslash: raw LF/CR are
-    grammar-forbidden inside '"…"' (review 3393212456), and the remaining
+    grammar-forbidden inside '"…"', and the remaining
     C0 controls are stripped (they never occur in legitimate search text).
     """
     out = text.replace("\\", "\\\\").replace('"', '\\"')
@@ -46,7 +46,7 @@ class RheaReactions:
     def __init__(self, client: RheaSparqlClient | None = None):
         self.client = client or RheaSparqlClient()
 
-    # -- search -----------------------------------------------------------------
+
 
     def search_by_text(self, text: str, limit: int) -> dict:
         """Master reactions whose chemical equation contains ``text``
@@ -103,7 +103,7 @@ class RheaReactions:
         return {"api_total": total, "n_returned": len(reactions),
                 "truncated": total > len(reactions), "reactions": reactions}
 
-    # -- single reaction ----------------------------------------------------------
+
 
     def get_reaction(self, rhea_id: str | int) -> dict:
         """Full record for one master (undirected) Rhea reaction.
@@ -178,6 +178,6 @@ def _localname(uri: str | None) -> str | None:
 
 
 def _coefficient(coef_prop_uri: str) -> str:
-    # http://rdf.rhea-db.org/contains2 -> "2"; containsN -> "N"; contains2n -> "2n"
+
     local = _localname(coef_prop_uri) or ""
     return local.removeprefix("contains") or "1"

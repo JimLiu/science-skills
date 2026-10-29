@@ -2,7 +2,7 @@
 Kernel sidecar for the pdf-explore skill.
 
 Auto-injected into the Python kernel on ``skill({"skill": "pdf-explore"})``
-(see core/src/runner/skillKernelInject.ts). Top level is definition-only;
+by the runner's skill-kernel injection. Top level is definition-only;
 all non-stdlib imports are inside function bodies so the sidecar loads in
 the bare skeleton env. All names are ``pdf_``-prefixed since sidecars
 share the kernel's ``__main__``.
@@ -38,9 +38,15 @@ Module-level so repeat ``pdf_scan`` calls on the same file with a different
 query skip re-parsing/re-rendering. Cleared only on kernel restart."""
 
 
-PDF_DEFAULT_MODEL = "claude-haiku-4-5"
-"""Cheap model for per-page classification. Bench (n=10 arXiv) shows sonnet
-at 3× cost for zero recall gain; haiku is the right default."""
+def pdf_model_fields(caller_model):
+    """``{"model": caller_model}`` when the caller named one, sent as written.
+    Else no model, so the request runs on ``[llm] kernel_default_model``, and
+    thinking off, so hidden thinking cannot spend ``pdf_map``'s page-sized
+    output budget. ``""`` is none."""
+    if caller_model:
+        return {"model": caller_model}
+    return {"thinking": {"type": "disabled"}}
+
 
 PDF_AUTO_IMAGE_CHARS_THRESHOLD = 80
 """Mean chars/page below which ``mode='auto'`` switches text→image.
@@ -115,9 +121,9 @@ def pdf_prompt_blocks(instructions):
     untrusted); ``page_open_fmt.format(n=page_number)`` opens a page
     block; the query pair wraps the caller's query in pdf_scan.
     """
-    # Loud, named error for a truthy non-string system= — previously the
-    # same value got _llm_req_guard's clear message; without this it
-    # dies as a bare AttributeError on .rstrip() below.
+
+
+
     if instructions and not isinstance(instructions, str):
         raise TypeError(
             f"pdf-explore: system/instructions must be a str, got "
@@ -159,7 +165,7 @@ def pdf_resolve(path_or_vid):
     p = os.path.expanduser(path_or_vid)
     if os.path.exists(p):
         return p
-    # UUID (artifact_id / version_id) — 8-4-4-4-12 hex.
+
     if re.fullmatch(r"[0-9a-fA-F-]{32,36}", path_or_vid.strip()):
         return pdf_sdk().artifact_path(path_or_vid)
     return p
@@ -201,17 +207,17 @@ def pdf_pages(path, mode="auto", pages=None, dpi=100, cache=True):
         raise ValueError(
             f"pdf_pages: mode must be 'text'|'image'|'both'|'auto', got {mode!r}"
         )
-    # mode="auto" passes `pages` to two recursive calls — materialize a
-    # one-shot iterable (generator/filter/iter) so the second call doesn't
-    # see an exhausted object and silently return [].
+
+
+
     if pages is not None and not hasattr(pages, "__len__"):
         pages = list(pages)
     if mode == "auto":
-        # Auto-detect scanned/image-only PDFs: parse text first, and if the
-        # mean page has almost no extractable text (<80 chars — threshold
-        # catches rasterized scans and slide-deck exports while leaving
-        # sparse figure-pages alone), re-parse with rendering. Both parses
-        # are cached independently so a re-scan is free.
+
+
+
+
+
         txt = pdf_pages(path, mode="text", pages=pages, dpi=dpi, cache=cache)
         if not txt:
             return txt
@@ -239,13 +245,13 @@ def pdf_pages(path, mode="auto", pages=None, dpi=100, cache=True):
     img_dir = None
     if render:
         sha8 = hashlib.sha1(abspath.encode()).hexdigest()[:8]
-        # Under .cache/ → excluded from scanWorkspace → page renders do NOT
-        # trigger auto_view_images (which would spam 20 images into context
-        # on a 50-page scan). The agent explicitly copies top-K renders to
-        # ./hit_pN.png when it wants them attached — see SKILL.md recipe.
-        # Keyed on mtime + dpi so a re-render at a different dpi, or after
-        # the PDF is modified in place, doesn't silently reuse stale PNGs
-        # (the in-memory PDF_PAGE_CACHE already keys on both).
+
+
+
+
+
+
+
         img_dir = os.path.join(
             os.getcwd(), ".cache", "pdf-explore",
             f"{sha8}-{mtime}", f"dpi{int(dpi)}",
@@ -256,21 +262,21 @@ def pdf_pages(path, mode="auto", pages=None, dpi=100, cache=True):
         import pypdfium2 as pdfium
     except ImportError:
         pdfium = None
-    # pypdfium2's to_pil() lazy-imports PIL.Image; without pillow the render
-    # path dies with a bare ModuleNotFoundError instead of the install recipe
-    # below (finding 3484603607). When rendering is requested and pillow is
-    # absent, demote pdfium so fitz (pix.save() writes PNG natively, no PIL
-    # dep) or the install recipe gets a chance. Text-only pdfium needs no
-    # pillow — keep it for mode="text".
+
+
+
+
+
+
     if pdfium is not None and render:
         try:
-            import PIL.Image  # noqa: F401
+            import PIL.Image
         except ImportError:
             pdfium = None
     fitz = None
     if pdfium is None:
         try:
-            import fitz  # pymupdf — user-installed fallback (AGPL-3.0)
+            import fitz
         except ImportError:
             pass
 
@@ -296,15 +302,15 @@ def pdf_pages(path, mode="auto", pages=None, dpi=100, cache=True):
                 txt = ""
                 if need_text:
                     tp = pg.get_textpage()
-                    # pdfium emits \r\n line endings — normalize so char
-                    # counts/thresholds match the historical extractor.
+
+
                     txt = tp.get_text_bounded().replace("\r\n", "\n")
                     tp.close()
                 ip = None
                 if render:
                     ip = os.path.join(img_dir, f"p{i + 1:03d}.png")
                     if not (cache and os.path.exists(ip)):
-                        # dpi→scale: PDF native is 72dpi.
+
                         bmp = pg.render(scale=float(dpi) / 72.0)
                         bmp.to_pil().save(ip)
                 out.append({
@@ -336,7 +342,7 @@ def pdf_pages(path, mode="auto", pages=None, dpi=100, cache=True):
                 if render:
                     ip = os.path.join(img_dir, f"p{i + 1:03d}.png")
                     if not (cache and os.path.exists(ip)):
-                        # dpi→zoom: PDF native is 72dpi.
+
                         zoom = float(dpi) / 72.0
                         pix = pg.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
                         pix.save(ip)
@@ -477,7 +483,6 @@ def pdf_map(path, prompt="Summarize this page in 2 sentences.",
     ``prompt`` is applied per-page with the page text/image prepended;
     defaults to a 2-sentence summary.
     """
-    model = model or PDF_DEFAULT_MODEL
     parsed = pdf_pages(path, mode=mode, pages=pages, dpi=dpi)
     if not parsed:
         return {"pages": [], "n_pages": 0,
@@ -486,13 +491,13 @@ def pdf_map(path, prompt="Summarize this page in 2 sentences.",
     pdf_check_fanout(parsed, "pdf_map")
 
     want_image = any(p.get("image_path") for p in parsed)
-    # host.llm no longer accepts a system field — caller instructions
-    # AND the operative task both ride the authoritative nonce-delimited
-    # header (a bare task after the untrusted page block would sit
-    # outside the only block the notice declares authoritative); page
-    # text is neutralized of tag lookalikes (pdf_guard_text).
-    # Same named error pdf_prompt_blocks raises — checked here because the
-    # f-string below would otherwise silently stringify a non-str system.
+
+
+
+
+
+
+
     if system and not isinstance(system, str):
         raise TypeError(
             f"pdf-explore: system/instructions must be a str, got "
@@ -512,7 +517,7 @@ def pdf_map(path, prompt="Summarize this page in 2 sentences.",
                 f"{txt or '[no extractable text]'}\n"
                 f"{p_close}"
             ),
-            "model": model,
+            **pdf_model_fields(model),
             "max_tokens": int(max_tokens),
         }
         if want_image and p.get("image_path"):
@@ -553,8 +558,8 @@ def pdf_outline(path, model=None, max_concurrency=8, force_llm=False,
 
     Tries the PDF's embedded outline (``doc.get_toc()`` — free, instant;
     most LaTeX-sourced arXiv PDFs have it). When empty or ``force_llm``:
-    single batched LLM call on text-layer ≤150pp (~$0.001-0.003 total);
-    per-page LLM extraction otherwise (scanned or >150pp, ~$0.002/page).
+    single batched LLM call on text-layer ≤150pp; per-page LLM extraction
+    otherwise (scanned or >150pp).
     ``pages`` restricts the per-page fallback (e.g. ``range(1, n, 2)`` to
     stride-sample a ≥513pp doc under the 512-request batch cap).
 
@@ -576,31 +581,31 @@ def pdf_outline(path, model=None, max_concurrency=8, force_llm=False,
                 for bm in doc.get_toc():
                     dest = bm.get_dest()
                     idx = dest.get_index() if dest else None
-                    # [level, title, 1-indexed page] — same shape as the
-                    # historical fitz get_toc(simple=True); unresolvable
-                    # destinations map to page 0 and are dropped below.
+
+
+
                     toc.append([bm.level + 1, bm.get_title(),
                                 (idx + 1) if idx is not None else 0])
             finally:
                 doc.close()
-        except Exception:  # noqa: BLE001
+        except Exception:
             try:
-                import fitz  # pymupdf — user-installed fallback
+                import fitz
                 with fitz.open(abspath) as doc:
-                    toc = doc.get_toc(simple=True)  # [[lv, title, page], ...]
-            except Exception:  # noqa: BLE001
-                toc = None  # no parser / corrupt outline → LLM fallback
+                    toc = doc.get_toc(simple=True)
+            except Exception:
+                toc = None
         try:
             if toc:
                 fast = [{"page": int(p), "heading": str(t), "level": int(lv)}
                         for lv, t, p in toc if p > 0]
                 if fast:
-                    # Sanity check: embedded bookmarks sometimes point to
-                    # document-logical pages (e.g. a LaTeX thesis whose
-                    # hyperref anchors were generated before 20 pages of
-                    # front-matter were prepended), so page N in the TOC is
-                    # really PDF page N+offset. Verify 2-3 level-1 entries
-                    # against the actual page text; warn if none match.
+
+
+
+
+
+
                     try:
                         import unicodedata as _ud
                         def _norm(s):
@@ -618,11 +623,11 @@ def pdf_outline(path, model=None, max_concurrency=8, force_llm=False,
                             t = _norm(by_pg.get(e["page"], "")[:1200])
                             if h and h in t:
                                 hits += 1
-                        # A scanned PDF (no text layer) yields empty probe
-                        # text — that's "can't verify", not "offset
-                        # bookmarks"; stay quiet rather than mis-diagnose.
-                        # Same threshold pdf_pages uses for "this page has
-                        # (almost) no text".
+
+
+
+
+
                         has_text_layer = any(
                             len(by_pg.get(e["page"], "").strip())
                             >= PDF_AUTO_IMAGE_CHARS_THRESHOLD
@@ -640,33 +645,33 @@ def pdf_outline(path, model=None, max_concurrency=8, force_llm=False,
                                 "before navigating; or pass force_llm=True "
                                 "to rebuild the outline from the page text."
                             )
-                    except Exception:  # noqa: BLE001
-                        pass  # best-effort sanity check only
+                    except Exception:
+                        pass
                     return fast
-                # All entries had unresolvable destinations (page 0/-1) —
-                # fall through to LLM fallback rather than returning [].
-        except Exception:  # noqa: BLE001
-            pass  # malformed outline entries → fall through to LLM
+
+
+        except Exception:
+            pass
 
     level_re = re.compile(
         r"^\s*((?i:appendix|annex)\s+[A-Z0-9]+(?:\.\d+)*"
         r"|(?i:chapter|section)\s+\d+(?:\.\d+)*"
         r"|(?i:part)\s+[IVXLCivxlc\d]+(?:\.\d+)*|[A-Z](?:\.\d+)*|\d+(?:\.\d+)*)\b"
-    )  # "3.2.1"/"Section 4.1.2" → level 3; "A.1" → 2; "Appendix A" → 1
+    )
 
-    # ── single-call outline extract ──────────────────────────────────────
-    # One call with all pages + an outline tool. Sees the whole doc so it
-    # resolves printed-TOC pages, forward-refs, and running headers
-    # holistically — no post-hoc dedup heuristic needed. Tested on 16pp
-    # and 75pp ML papers: 26 and 24 clean entries respectively (1 call vs
-    # N); printed-TOC page correctly ignored, ~3s. Falls back to per-page
-    # for image input or >150pp.
+
+
+
+
+
+
+
     parsed = pdf_pages(abspath, mode="auto")
     if not parsed:
         return []
     want_image = any(p.get("image_path") for p in parsed)
     if not want_image and len(parsed) <= 150:
-        # Nonce-delimited blocks + lookalike strip — see pdf_prompt_blocks.
+
         hdr, p_open, p_close = pdf_prompt_blocks(
             "Extract the document's section outline. For each numbered "
             "heading (e.g. '1 Introduction', '3.2 Methods', 'Appendix "
@@ -683,10 +688,10 @@ def pdf_outline(path, model=None, max_concurrency=8, force_llm=False,
         )
         r = pdf_sdk().llm([{
             "prompt": hdr + body,
-            "model": model or PDF_DEFAULT_MODEL,
-            # Dense outlines (proceedings, textbooks) can exceed 4096
-            # output tokens of tool_use JSON; llm_batch sets
-            # noPrefillContinuation so there is no auto-continuation.
+            **pdf_model_fields(model),
+
+
+
             "max_tokens": 8192,
             "tools": [{
                 "name": "outline",
@@ -716,17 +721,17 @@ def pdf_outline(path, model=None, max_concurrency=8, force_llm=False,
                 m = level_re.match(h)
                 level = 1 + (m.group(1).count(".") if m else 0)
                 out.append({"page": pg, "heading": h.strip(), "level": level})
-            # Truncated tool_use JSON → partial-but-parseable entries list;
-            # don't return a silently incomplete outline, fall through.
+
+
             if out and r.get("stop_reason") != "max_tokens":
                 out.sort(key=lambda e: e["page"])
                 return out
-        # error or empty → fall through to per-page
 
-    # ── per-page fallback (scanned / long docs) ──────────────────────────
-    # Branded cap check BEFORE delegating: otherwise a >512-page no-TOC doc
-    # surfaces pdf_extract's error (wrong function name, and a first-512-
-    # chunk hint) when pdf_outline's documented remedy is a stride sample.
+
+
+
+
+
     if pages is None and len(parsed) > PDF_MAX_FANOUT_PAGES:
         raise ValueError(
             f"pdf_outline: {len(parsed)} pages exceeds the "
@@ -752,8 +757,8 @@ def pdf_outline(path, model=None, max_concurrency=8, force_llm=False,
          },
          "required": ["section_headings"]},
         pages=pages,
-        mode="auto",  # scanned docs (0 chars/page) need image input
-        model=model or PDF_DEFAULT_MODEL,
+        mode="auto",
+        model=model,
         max_concurrency=max_concurrency,
         system=(
             "You extract section headings from a single PDF page. Return "
@@ -762,9 +767,9 @@ def pdf_outline(path, model=None, max_concurrency=8, force_llm=False,
             "table captions and page headers. Empty list if none start here."
         ),
     )
-    # Per-page heading count — a page contributing >8 headings is almost
-    # certainly a *printed* TOC page (e.g. p2 of a long paper), whose
-    # entries all point at the wrong page. Drop that page's contributions.
+
+
+
     per_page = {}
     for r in rows:
         hs = (r.get("data") or {}).get("section_headings") or []
@@ -779,12 +784,12 @@ def pdf_outline(path, model=None, max_concurrency=8, force_llm=False,
             m = level_re.match(h)
             level = 1 + (m.group(1).count(".") if m else 0)
             out.append({"page": pg, "heading": h, "level": level})
-    # Dedupe. Numbered headings ("1.2 Foo") are globally unique section
-    # ids, so an earlier occurrence is a forward-reference (printed TOC /
-    # cross-ref) — keep the LAST page. Unnumbered headings ("References",
-    # "Summary", "Exercises") legitimately repeat per-chapter — keep every
-    # page, dropping only exact (heading, page) duplicates. Preserves
-    # first-occurrence order of the kept entries.
+
+
+
+
+
+
     last_page = {}
     for e in out:
         if level_re.match(e["heading"]):
@@ -809,7 +814,7 @@ def pdf_scan(path, query, top_k=5, mode="auto", model=None,
     """Per-page relevance scan via ``host.llm`` (list form).
 
     ``strategy="auto"`` (default): single-call comparative ranking when
-    the doc is ≤150 text-layer pages (one haiku call with all pages +
+    the doc is ≤150 text-layer pages (one call with all pages +
     rank tool; bench n=20 mrr=0.925 σ=0, −60% cost vs fan-out);
     otherwise per-page fan-out. ``"fanout"`` forces per-page (one call
     per page, absolute score + summary — use for scanned/image input or
@@ -831,10 +836,10 @@ def pdf_scan(path, query, top_k=5, mode="auto", model=None,
     scanned, not just the returned hits.
 
     Cost: ``strategy="auto"`` (default, text ≤150pp) → one batched call,
-    ~$0.001/page, ~1-3s wall. ``strategy="fanout"`` (scanned, >150pp, or
-    ``threshold=`` set) → ~$0.0026/page; 100pp ≈ $0.26 and ~15s at
-    ``max_concurrency=16``. ``model`` defaults to
-    :data:`PDF_DEFAULT_MODEL` (haiku); sonnet at 3× cost shows no recall
+    ~1-3s wall. ``strategy="fanout"`` (scanned, >150pp, or ``threshold=``
+    set) → one call per page, about 2.5× the batched call's cost per page;
+    100pp takes ~15s at ``max_concurrency=16``. With no ``model=`` the calls
+    run on ``[llm] kernel_default_model``; a heavier model showed no recall
     gain on the bench.
 
     Prefer :func:`pdf_map` for "what's in this document" navigation — it
@@ -843,7 +848,6 @@ def pdf_scan(path, query, top_k=5, mode="auto", model=None,
     """
     if not isinstance(query, str) or not query.strip():
         raise ValueError("pdf_scan: query must be a non-empty str")
-    model = model or PDF_DEFAULT_MODEL
 
     parsed = pdf_pages(path, mode=mode, pages=pages, dpi=dpi)
     if not parsed:
@@ -853,12 +857,12 @@ def pdf_scan(path, query, top_k=5, mode="auto", model=None,
 
     want_image = any(p.get("image_path") for p in parsed)
 
-    # Resolve "auto" — single-call when text-mode + fits in context.
-    # Single-call dominates per-page on bench (mrr +0.11, $/pg −60%,
-    # σ=0) for ≤150pp text; fanout for scanned/long docs or when caller
-    # wants summaries. threshold= needs real per-page confidence scores
-    # (single_call's relevance is rank-derived, not calibrated), so it
-    # routes to fanout too.
+
+
+
+
+
+
     if strategy not in ("auto", "single_call", "fanout"):
         raise ValueError(
             f"pdf_scan: strategy must be 'auto'|'single_call'|'fanout', "
@@ -876,33 +880,34 @@ def pdf_scan(path, query, top_k=5, mode="auto", model=None,
             "Use strategy='fanout' (or 'auto') with threshold."
         )
     if strategy == "single_call" and want_image:
-        # single_call is text-only (one request packing all page text).
-        # Silently falling through to per-page fan-out overrides an
-        # explicit caller choice — say so instead (same precedent as the
-        # threshold= rejection above). strategy='auto' never hits this:
-        # it resolves to fanout for image input.
+
+
+
+
+
         raise ValueError(
             "pdf_scan: strategy='single_call' is text-only; this document "
             "parsed in image mode. Pass mode='text' to rank from the text "
             "layer, or strategy='fanout' (or 'auto') for per-page image "
             "classification."
         )
-    # Only the fan-out path issues one request per page; single_call
-    # packs all pages into ONE request (its bound is the wire cap /
-    # model context, not LLM_BATCH_MAX_REQUESTS).
+
+
+
     if strategy == "fanout":
         pdf_check_fanout(parsed, "pdf_scan")
 
-    # ── single-call comparative ranking ──────────────────────────────────
-    # One llm call with ALL pages in context + a rank tool. Haiku compares
-    # pages directly (vs per-page absolute scoring) — on bench n=20 this
-    # gives mrr=0.925 (σ=0 across 3 reps) at $0.001/page, vs per-page
-    # 0.817 at $0.0025/page. Image input is rejected above (text-only).
+
+
+
+
+
+
     if strategy == "single_call" and not want_image:
-        # Nonce-delimited blocks + lookalike neutralization — the query
-        # tags are nonce'd too (a plain <query> would be declared
-        # non-authoritative by the header's own notice), and the query
-        # string is guarded since it can carry user-supplied text.
+
+
+
+
         hdr, p_open, p_close, q_open, q_close = pdf_prompt_blocks(
             system or PDF_CLASSIFY_SYSTEM)
         body = "\n\n".join(
@@ -915,9 +920,9 @@ def pdf_scan(path, query, top_k=5, mode="auto", model=None,
         r = pdf_sdk().llm([{
             "prompt": (f"{hdr}{q_open}{pdf_guard_text(query)}{q_close}"
                        f"\n\n{body}"),
-            "model": model,
-            # Output is just an integer array, but a 150-page doc ranked
-            # in full is ~600 tokens of tool_use JSON — 512 truncates.
+            **pdf_model_fields(model),
+
+
             "max_tokens": 2048,
             "tools": [{
                 "name": "rank_pages",
@@ -942,10 +947,10 @@ def pdf_scan(path, query, top_k=5, mode="auto", model=None,
                     "usage": usage, "error": r["error"]}
         ranked = ((r.get("tool_use") or {}).get("input", {})
                   .get("top_pages") or [])
-        # Truncated tool_use JSON → host defaults input to {} → ranked
-        # == [] with n_errors=0, indistinguishable from "no relevant
-        # pages". Surface it as an error instead of a silent empty result
-        # (same failure mode pdf_outline/pdf_extract already guard).
+
+
+
+
         if not ranked and r.get("stop_reason") == "max_tokens":
             return {"hits": [], "n_scanned": len(parsed),
                     "usage": {**usage, "n_errors": 1},
@@ -955,9 +960,9 @@ def pdf_scan(path, query, top_k=5, mode="auto", model=None,
         hits = []
         seen = set()
         for pg in ranked:
-            # tool_use payloads aren't server-validated — guard non-int and
-            # duplicate entries so one bad/repeated item doesn't destroy
-            # the whole result (matches run.ts rankPagesSingleCall).
+
+
+
             try:
                 n = int(pg)
             except (TypeError, ValueError):
@@ -979,18 +984,18 @@ def pdf_scan(path, query, top_k=5, mode="auto", model=None,
             hits = hits[: int(top_k)]
         return {"hits": hits, "n_scanned": len(parsed), "usage": usage}
 
-    # ── per-page fan-out (default) ───────────────────────────────────────
-    # Nonce-delimited blocks + lookalike neutralization — query tags
-    # nonce'd and the query string guarded, same as the single-call lane.
+
+
+
     hdr, p_open, p_close, q_open, q_close = pdf_prompt_blocks(
         system or PDF_CLASSIFY_SYSTEM)
 
     reqs = []
     for p in parsed:
         txt = pdf_guard_text(p["text"])
-        # Cap per-page text to ~6K chars (≈1.5K tokens). Long pages are
-        # usually reference lists or appendices; the head is enough to
-        # classify and keeps per-page cost bounded.
+
+
+
         if len(txt) > 6000:
             txt = txt[:6000] + f"\n…[{len(txt) - 6000} more chars]"
         prompt = (
@@ -1000,7 +1005,7 @@ def pdf_scan(path, query, top_k=5, mode="auto", model=None,
         )
         req = {
             "prompt": prompt,
-            "model": model,
+            **pdf_model_fields(model),
             "max_tokens": 256,
             "tools": [PDF_CLASSIFY_TOOL],
             "tool_choice": {"type": "tool", "name": "classify_page"},
@@ -1026,11 +1031,11 @@ def pdf_scan(path, query, top_k=5, mode="auto", model=None,
             })
             continue
         tu = (r.get("tool_use") or {}).get("input") or {}
-        # Truncated tool_use JSON → input defaults to {} → score 0.0,
-        # silently indistinguishable from "not relevant". Rare at 256
-        # tokens for a constant-size classify payload, but count it as
-        # an error rather than a confident 0.0. (4th instance of the
-        # forced-tool truncation pattern in this file.)
+
+
+
+
+
         if not tu and r.get("stop_reason") == "max_tokens":
             ne += 1
             hits.append({
@@ -1078,7 +1083,7 @@ def pdf_extract(path, schema, pages=None, mode="auto", model=None,
     "error": str|None, "stop_reason": str|None, "usage": {...}}, ...]`` in
     page order. ``stop_reason == "max_tokens"`` means the tool_use JSON was
     truncated mid-emit — ``data`` may be None or partial; raise
-    ``max_tokens`` (default 2048, max 32768) for dense schemas.
+    ``max_tokens`` (default 2048) for dense schemas.
 
     Example — pull every citation::
 
@@ -1093,8 +1098,6 @@ def pdf_extract(path, schema, pages=None, mode="auto", model=None,
             "pdf_extract: schema must be a JSON-Schema object dict "
             '({"type":"object","properties":{...}})'
         )
-    model = model or PDF_DEFAULT_MODEL
-
     parsed = pdf_pages(path, mode=mode, pages=pages, dpi=dpi)
     if not parsed:
         return []
@@ -1106,7 +1109,7 @@ def pdf_extract(path, schema, pages=None, mode="auto", model=None,
         "input_schema": schema,
     }
     want_image = any(p.get("image_path") for p in parsed)
-    # Nonce-delimited blocks + lookalike strip — see pdf_prompt_blocks.
+
     hdr, p_open, p_close = pdf_prompt_blocks(system or (
         "Extract structured data from a single PDF page. Emit exactly what "
         "the schema asks for. Use empty arrays/nulls for fields with no "
@@ -1124,7 +1127,7 @@ def pdf_extract(path, schema, pages=None, mode="auto", model=None,
                 + p_open.format(n=p["page"]) + "\n"
                 f"{txt or '[no extractable text]'}\n{p_close}"
             ),
-            "model": model,
+            **pdf_model_fields(model),
             "max_tokens": int(max_tokens),
             "tools": [tool],
             "tool_choice": {"type": "tool", "name": "extract"},
@@ -1143,9 +1146,9 @@ def pdf_extract(path, schema, pages=None, mode="auto", model=None,
                         "usage": None})
             continue
         tu = (r.get("tool_use") or {}).get("input")
-        # stop_reason == "max_tokens" → the tool_use JSON was truncated;
-        # data may be None/partial. Surface it so callers can distinguish
-        # truncation from a legitimately-empty page.
+
+
+
         out.append({"page": p["page"], "data": tu,
                     "error": None, "stop_reason": r.get("stop_reason"),
                     "usage": r.get("usage")})

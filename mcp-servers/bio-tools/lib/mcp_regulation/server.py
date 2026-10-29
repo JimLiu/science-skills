@@ -22,13 +22,14 @@ parameter that actually filters).
 """
 from __future__ import annotations
 
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import reject_blank
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 from encode_search import EncodeSearch
@@ -36,12 +37,14 @@ from jaspar_matrices import JasparClient
 from jaspar_matrices import tool as jaspar
 from unibind_tfbs import tool as unibind
 
-mcp = FastMCP("mcp-regulation")
+
+
+mcp = GuardedFastMCP("mcp-regulation")
 
 _encode = EncodeSearch()
 _jaspar_client = JasparClient()
-# Two paced clients: unibind.uio.no (catalog) and api.genome.ucsc.edu
-# (region queries) are throttled independently, per-host.
+
+
 _unibind_client = unibind.make_unibind_client()
 _ucsc_client = unibind.make_ucsc_client()
 
@@ -55,9 +58,9 @@ def _truncate(out: dict, rows_key_out: str, max_rows: int | None) -> dict:
             "accessions": out["accessions"], rows_key_out: kept}
 
 
-# --------------------------------------------------------------------------
-# ENCODE tools
-# --------------------------------------------------------------------------
+
+
+
 
 @mcp.tool(annotations=READ_ONLY)
 def encode_search_experiments(assay_title: str | None = None,
@@ -81,6 +84,12 @@ def encode_search_experiments(assay_title: str | None = None,
     (`truncated` flags the cap). Broad queries walk every page server-side —
     always filter. Use encode_get_experiment for full detail on one hit.
     """
+
+
+
+    reject_blank(extra_filters, assay_title=assay_title, target=target,
+                 organism=organism, status=status,
+                 date_released_before=date_released_before)
     out = _encode.search_experiments(
         assay_title=assay_title, target=target, organism=organism,
         status=status, date_released_before=date_released_before,
@@ -108,6 +117,10 @@ def encode_search_biosamples(term_name: str | None = None,
     (`truncated` flags the cap). Use encode_get_biosample for one record's
     full detail.
     """
+
+    reject_blank(extra_filters, term_name=term_name,
+                 classification=classification, organism=organism,
+                 status=status, date_created_before=date_created_before)
     out = _encode.search_biosamples(
         term_name=term_name, classification=classification,
         organism=organism, status=status,
@@ -143,6 +156,12 @@ def encode_list_files(file_format: str | None = None,
     most max_rows row summaries are returned (`truncated` flags the cap).
     Use encode_get_file for one file's full metadata (md5sum, href, ...).
     """
+
+
+    reject_blank(extra_filters, file_format=file_format,
+                 assay_term_name=assay_term_name,
+                 biosample_term_name=biosample_term_name, status=status,
+                 date_created_before=date_created_before)
     out = _encode.list_files(
         file_format=file_format, assay_term_name=assay_term_name,
         biosample_term_name=biosample_term_name, status=status,
@@ -185,9 +204,9 @@ def encode_get_biosample(accession: str) -> dict:
     return _encode.get_biosample(accession)
 
 
-# --------------------------------------------------------------------------
-# JASPAR tools
-# --------------------------------------------------------------------------
+
+
+
 
 @mcp.tool(annotations=READ_ONLY)
 def jaspar_get_matrix(matrix_id: str) -> dict:
@@ -236,6 +255,11 @@ def jaspar_list_matrices(collection: str | None = None,
     collection, sequence logo URL) are returned (`truncated` flags the cap).
     Use jaspar_get_matrix for the PFM of any hit.
     """
+
+
+
+    reject_blank(collection=collection, tax_group=tax_group, name=name,
+                 search=search, version=version)
     out = jaspar.list_matrices(
         _jaspar_client, collection=collection, tax_group=tax_group,
         tax_id=tax_id, name=name, search=search, version=version)
@@ -286,9 +310,9 @@ def jaspar_list_releases() -> dict:
     return jaspar.list_releases(_jaspar_client)
 
 
-# --------------------------------------------------------------------------
-# UniBind tools
-# --------------------------------------------------------------------------
+
+
+
 
 @mcp.tool(annotations=READ_ONLY)
 def unibind_search_tfbs(tf_name: str | None = None,
@@ -321,6 +345,10 @@ def unibind_search_tfbs(tf_name: str | None = None,
     cell_line, and the dataset's ChIP-seq peak count (total_peaks — NOT the
     TFBS count; per-model TFBS counts live in unibind_get_dataset).
     """
+
+
+    reject_blank(tf_name=tf_name, cell_line=cell_line, species=species,
+                 collection=collection, jaspar_id=jaspar_id, search=search)
     return unibind.search_datasets(
         _unibind_client, tf_name=tf_name, cell_line=cell_line,
         species=species, collection=collection, jaspar_id=jaspar_id,
@@ -384,10 +412,10 @@ def unibind_tfbs_in_region(genome: str, chrom: str, start: int, end: int,
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

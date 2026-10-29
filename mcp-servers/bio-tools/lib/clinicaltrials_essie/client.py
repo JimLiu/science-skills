@@ -15,7 +15,7 @@ import requests
 
 BASE_URL = "https://clinicaltrials.gov/api/v2"
 
-# Trimmed field set for search results (piece names from /api/v2/studies/metadata).
+
 DEFAULT_FIELDS = "|".join([
     "NCTId", "BriefTitle", "OverallStatus", "Phase", "StudyType",
     "Condition", "LeadSponsorName", "LeadSponsorClass",
@@ -59,7 +59,7 @@ class CTGovClient:
         self._session.headers.update(
             {"User-Agent": "clinicaltrials-essie/0.1 (anthropic-experimental/bio-tools)"})
 
-    # -- low level -------------------------------------------------------------
+
 
     def close(self) -> None:
         self._session.close()
@@ -93,7 +93,7 @@ class CTGovClient:
             }
             return resp.json(), meta
 
-    # -- studies endpoint ------------------------------------------------------
+
 
     def count(self, base_params: dict[str, str]) -> tuple[int, dict]:
         """Independent count-only request (countTotal=true, pageSize=1, fields=NCTId)."""

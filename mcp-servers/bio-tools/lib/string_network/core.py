@@ -16,10 +16,10 @@ from .client import StringClient
 TOOL_NAME = "string-network"
 TOOL_VERSION = "0.3.0"
 
-#: STRING evidence channels, in the column order of the network endpoint.
+
 EVIDENCE_CHANNELS = ("nscore", "fscore", "pscore", "ascore", "escore", "dscore", "tscore")
 
-#: Columns expected from /api/tsv/network.
+
 NETWORK_TSV_COLUMNS = (
     "stringId_A",
     "stringId_B",
@@ -29,13 +29,13 @@ NETWORK_TSV_COLUMNS = (
     "score",
 ) + EVIDENCE_CHANNELS
 
-#: Fields stripped by :func:`canonicalize` (operational / volatile metadata only).
+
 VOLATILE_PROVENANCE_FIELDS = ("retrieved_at", "requests", "n_http_requests", "bytes_downloaded")
 
 
-# --------------------------------------------------------------------------- #
-# identifier mapping
-# --------------------------------------------------------------------------- #
+
+
+
 
 def parse_mapping_rows(
     symbols: list[str], rows: list[dict[str, Any]]
@@ -51,7 +51,7 @@ def parse_mapping_rows(
     by_index: dict[int, dict[str, Any]] = {}
     for row in rows:
         idx = int(row["queryIndex"])
-        # limit=1 should yield at most one row per query; keep the first if not.
+
         by_index.setdefault(idx, row)
 
     mapped: list[dict[str, Any]] = []
@@ -90,9 +90,9 @@ def map_identifiers(
     return parse_mapping_rows(symbols, rows)
 
 
-# --------------------------------------------------------------------------- #
-# network retrieval and canonical edge ordering
-# --------------------------------------------------------------------------- #
+
+
+
 
 def parse_network_tsv(text: str) -> list[dict[str, str]]:
     """Parse the TSV body of /api/tsv/network into a list of row dicts."""
@@ -172,9 +172,9 @@ def fetch_network_edges(
     return canonical_edges(parse_network_tsv(text))
 
 
-# --------------------------------------------------------------------------- #
-# summary statistics
-# --------------------------------------------------------------------------- #
+
+
+
 
 def _degrees_by_name(
     mapped: list[dict[str, Any]], edges: list[dict[str, Any]]
@@ -233,9 +233,9 @@ def _node_table(
     return sorted(nodes, key=lambda n: (n["name"], n["string_id"]))
 
 
-# --------------------------------------------------------------------------- #
-# main entry point
-# --------------------------------------------------------------------------- #
+
+
+
 
 def build_network(
     symbols: list[str],
@@ -299,21 +299,21 @@ def build_network(
             "required_score": required_score,
         },
         "string_version": version,
-        # nodes = merged mapping + degree table (query -> string_id -> preferred name);
-        # together with `unmapped` it accounts for 100% of the input symbols.
+
+
         "nodes": _node_table(mapped, edges),
         "unmapped": unmapped,
-        # edges are trimmed: preferred names + combined score + nonzero evidence
-        # channels only; STRING IDs are resolved via the node table.
+
+
         "edges": edges,
         "summary": summarize(mapped, unmapped, edges),
         "provenance": provenance,
     }
 
 
-# --------------------------------------------------------------------------- #
-# canonicalization (used by the gate to compare runs)
-# --------------------------------------------------------------------------- #
+
+
+
 
 def canonicalize(result: dict[str, Any]) -> bytes:
     """Canonical byte representation of a result for run-to-run comparison.

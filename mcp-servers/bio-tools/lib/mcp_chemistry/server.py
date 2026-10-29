@@ -30,14 +30,14 @@ from mcp.server.fastmcp import FastMCP
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 mcp = FastMCP("mcp-chemistry")
 
 
-# One fleet tool instance per process; fleet clients pace/retry internally.
+
 @lru_cache(maxsize=1)
 def _pubchem():
     from pubchem_compounds import PubChemCompounds
@@ -63,25 +63,25 @@ def _bindingdb():
 
 
 def _cap(rows: list, cap: int) -> tuple[list, bool]:
-    # Clamp: a negative cap must mean "nothing", never a tail-dropping
-    # negative slice (review 3399242243; matches the structures sibling).
+
+
     cap = max(0, cap)
     return (rows[:cap], True) if len(rows) > cap else (rows, False)
 
 
-# Query-type detection for rhea_search_reactions: ChEBI IDs (bare digits
-# count — a number is never a useful equation-text search), full EC numbers,
-# else free text over the equation.
+
+
+
 _CHEBI_QUERY_RE = re.compile(r"^(?:CHEBI:)?\d+$", re.IGNORECASE)
 _EC_QUERY_RE = re.compile(r"^\d+\.\d+\.\d+\.n?\d+$")
-# EC-subclass / partial notation: 2-4 dot-separated components, at least one
-# of which is a '-' placeholder or which stops short of a full 4-tuple
-# (e.g. "2.1.1.-", "2.1.-.-", "2.1.1"). Checked AFTER the full-EC match, so a
-# complete EC never lands here (finding 3406986031).
+
+
+
+
 _PARTIAL_EC_QUERY_RE = re.compile(r"^\d+\.(?:\d+|-)(?:\.(?:\d+|-)){0,2}$")
 
 
-# -------------------------------------------------------------- PubChem ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 def pubchem_search_compounds(query: str, namespace: str = "name",
@@ -148,8 +148,8 @@ def pubchem_get_compounds(cids: list[int], include_synonyms: bool = False,
     if len(cids) > 50:
         raise ValueError("at most 50 CIDs per call")
     cids = [int(c) for c in cids]
-    # One record per distinct CID — repeats are disclosed, not re-emitted
-    # (review 3399242239).
+
+
     unique = list(dict.fromkeys(cids))
     duplicates = list(dict.fromkeys(c for c in cids if cids.count(c) > 1))
     records = _pubchem().properties(unique)
@@ -253,7 +253,7 @@ def pubchem_get_safety(cid: int) -> dict:
     return {"cid": int(cid), "found": ghs is not None, "ghs": ghs}
 
 
-# ---------------------------------------------------------------- ChEBI ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 def chebi_search(term: str, max_results: int = 20, page: int = 1) -> dict:
@@ -351,7 +351,7 @@ def chebi_get_ontology(chebi_id: str, relation_type: str | None = None,
             "incoming_truncated": in_trunc}
 
 
-# ----------------------------------------------------------------- Rhea ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 def rhea_search_reactions(query: str, limit: int = 50) -> dict:
@@ -386,10 +386,10 @@ def rhea_search_reactions(query: str, limit: int = 50) -> dict:
         result = _rhea().search_by_ec(q, limit=limit)
         query_type = "ec"
     elif _PARTIAL_EC_QUERY_RE.match(q):
-        # EC-subclass notation (e.g. "2.1.1.-") — route to search_by_ec so
-        # the caller gets the documented rejection with guidance, not a
-        # confident api_total=0 from a substring search that can never hit
-        # (finding 3406986031).
+
+
+
+
         result = _rhea().search_by_ec(q, limit=limit)
         query_type = "ec"
     else:
@@ -423,7 +423,7 @@ def rhea_get_reaction(rhea_id: str) -> dict:
     return _rhea().get_reaction(rhea_id)
 
 
-# ------------------------------------------------------------ BindingDB ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 def bindingdb_ligands_by_target(uniprot: str, affinity_cutoff_nm: int = 10000,
@@ -495,10 +495,10 @@ def bindingdb_targets_by_compound(smiles: str, similarity: float = 0.85,
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

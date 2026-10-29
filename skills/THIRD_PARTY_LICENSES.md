@@ -38,6 +38,72 @@ reproduced in full below, as required by Apache License 2.0 §4(d):
  Unlicense http://unlicense.org/
 ```
 
+### CZ CELLxGENE (single-cell-explorer / single-cell-data-portal)
+
+Portions of the cellxgene-explorer MCP App widget and its Python sidecar are
+derived from Chan Zuckerberg Initiative open-source projects, used under the
+MIT License. Upstreams: `chanzuckerberg/single-cell-explorer` @
+`dbbcef32857a44f2f40eaa44b78c27a784e82671` (widget + Flask data server) and
+`chanzuckerberg/single-cell-data-portal` @
+`7dc6dc935297b73d6f8418ce6bf5f640e0741901` (h5ad→cxg conversion utilities).
+Both MIT license texts are reproduced in full below, as required by MIT §2.
+
+`chanzuckerberg/single-cell-explorer`:
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2017-Present Chan Zuckerberg Initiative
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+`chanzuckerberg/single-cell-data-portal`:
+
+```
+MIT License
+
+Copyright (c) 2019-Present Chan Zuckerberg Initiative
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+"CZ CELLxGENE", "CZ CELLxGENE Discover", and "CZ CELLxGENE Annotate" are
+trademarks of the Chan Zuckerberg Initiative. The MIT license covers the
+source code only and does not grant permission to use these marks; this
+viewer is a derivative work and is not affiliated with or endorsed by CZI.
+
 ### biomart-mcp
 
 biomart-mcp (BioMart MCP server) — https://github.com/jzinno/biomart-mcp,
@@ -105,6 +171,27 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 ```
 
+### Microsoft Visual C++ Runtime (Windows builds)
+
+The Windows builds ship three Microsoft Visual C++ Runtime libraries —
+`msvcp140.dll`, `vcruntime140.dll` and `vcruntime140_1.dll` (x64, file
+version 14.51.36247.0) — unmodified, beside the bundled `micromamba.exe`,
+which links to them. They are "Distributable Code" under the Microsoft Visual
+Studio license terms and are redistributed under those terms (list of
+redistributable files and conditions:
+https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files;
+license terms: https://visualstudio.microsoft.com/license-terms/). Copyright (c)
+Microsoft Corporation. All rights reserved. The bundled Windows Python runtime
+under `python/` carries its own copies of `vcruntime140.dll` and
+`vcruntime140_1.dll`; see `python/LICENSE.txt`.
+
+These files are not covered by the open-source licenses in this document, and
+you may not: alter any copyright, trademark or patent notice in them; use
+Microsoft's trademarks in a way that suggests your programs come from or are
+endorsed by Microsoft; distribute them to run on a platform other than
+Microsoft operating systems, run-time technologies or application platforms; or
+include them in malicious, deceptive or unlawful programs.
+
 ### sharp image runtime
 
 - sharp (https://github.com/lovell/sharp) — Apache License 2.0.
@@ -119,7 +206,7 @@ POSSIBILITY OF SUCH DAMAGE.
   LGPLv3 use is via the "any later version" clause of LGPLv2/LGPLv2.1):
   - LGPLv3: fribidi, glib, libexif, libheif, librsvg, libvips, pango,
     proxy-libintl
-  - Mozilla Public License 2.0: cairo
+  - Mozilla Public License 1.1: cairo
   - MIT License: cgif, expat, harfbuzz, lcms, libffi, libnsgif, libultrahdr,
     libxml2, pixman
   - BSD 2-Clause: libarchive, libimagequant; aom (BSD 2-Clause + Alliance
@@ -130,7 +217,7 @@ POSSIBILITY OF SUCH DAMAGE.
   - zlib License: zlib-ng; mozjpeg (zlib License, IJG License, BSD 3-Clause)
 
   Source for the exact bundled libvips build is available at
-  https://github.com/lovell/sharp-libvips/releases/tag/v1.3.1
+  https://github.com/lovell/sharp-libvips/releases/tag/v1.3.4
 - detect-libc — Apache License 2.0. Copyright 2017 Lovell Fuller and others.
 - semver (https://github.com/npm/node-semver) — ISC License.
   Copyright (c) Isaac Z. Schlueter and Contributors.
@@ -173,6 +260,42 @@ DejaVu Sans (https://dejavu-fonts.github.io/) — Bitstream Vera Fonts
 Copyright (c) 2003 Bitstream, Inc.; DejaVu changes are in the public domain.
 The full license ships alongside the fonts in the bundle (`fonts/LICENSE`).
 
+### Electron / Chromium (macOS window shell)
+
+The macOS desktop app hosts the app window in a rebranded, unmodified
+prebuilt Electron. Where the release builds the app flat, Electron is the app
+itself; otherwise it is a shell nested in the app
+(`Contents/Helpers/Claude Science Shell.app`). "The Electron bundle" below is
+whichever of the two holds Electron.
+
+- Electron (https://www.electronjs.org/) — MIT License.
+  Copyright (c) Electron contributors; Copyright (c) 2013-2020 GitHub Inc.
+  The upstream `LICENSE` from the Electron release ships inside the Electron
+  bundle as `Contents/Resources/LICENSE.electron.txt`.
+- Chromium and its bundled third-party components — the Chromium project's
+  aggregated notice file from the same Electron release ships inside the
+  Electron bundle as `Contents/Resources/LICENSES.chromium.html` (covers the
+  BSD-licensed Chromium code and every third-party component Chromium
+  aggregates). Chromium is Copyright 2015 The Chromium Authors.
+- Squirrel.Mac (https://github.com/Squirrel/Squirrel.Mac), Mantle
+  (https://github.com/Mantle/Mantle), and ReactiveObjC
+  (https://github.com/ReactiveCocoa/ReactiveObjC) — MIT License, each
+  Copyright (c) GitHub, Inc. Electron's macOS build vendors these three
+  frameworks (`Contents/Frameworks/{Squirrel,Mantle,ReactiveObjC}.framework`
+  in the Electron bundle; linked by `Electron Framework`, so they ride in the
+  bundle and are signed with it) and they are NOT Chromium `third_party/`
+  entries, so `LICENSES.chromium.html` does not cover them — their
+  attribution is carried here. A flat app that is signed for release updates
+  itself through Squirrel.Mac, which Electron's `autoUpdater` loads; a nested
+  shell never touches `autoUpdater`, and there the frameworks ship solely as
+  Electron's link-time macOS dependencies. The MIT License text
+  that governs them appears with the MIT entries above.
+
+Both notice files are carried verbatim from the pinned Electron release zip
+(`cli/scripts/electron-pin.json`) at build time
+(`cli/scripts/build-app-bundle.sh`), and the app-smoke CI job asserts their
+presence in the built bundle.
+
 ================================================================================
 2. WHAT THIS FILE DOES NOT COVER
 ================================================================================
@@ -191,9 +314,9 @@ Components above are licensed under the Apache License 2.0, the GNU LGPL
 v3.0, and the ISC License; those license texts are reproduced here in full.
 The GNU GPL v3.0 is included because the GNU LGPL v3.0 incorporates it by
 reference (LGPL-3.0 §4(b) requires it to accompany the Combined Work). The
-MIT License text appears with the @img/colour and biomart-mcp entries above;
-the remaining licenses named in the libvips listing are linked from the
-sharp-libvips source release referenced there.
+MIT License text appears with the @img/colour, biomart-mcp, and CZ CELLxGENE
+entries above; the remaining licenses named in the libvips listing are linked
+from the sharp-libvips source release referenced there.
 
 ### Apache License 2.0
 

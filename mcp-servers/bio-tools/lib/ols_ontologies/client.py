@@ -33,11 +33,11 @@ class OLSClient:
             headers={"Accept": "application/json", "User-Agent": USER_AGENT},
         )
         self._last_request_at = 0.0
-        # instrumentation
+
         self.request_count = 0
         self.bytes_downloaded = 0
 
-    # -- context manager -------------------------------------------------
+
     def __enter__(self) -> "OLSClient":
         return self
 
@@ -47,7 +47,7 @@ class OLSClient:
     def close(self) -> None:
         self._client.close()
 
-    # -- core -------------------------------------------------------------
+
     def _throttle(self) -> None:
         wait = self.min_interval_s - (time.monotonic() - self._last_request_at)
         if wait > 0:
@@ -67,10 +67,10 @@ class OLSClient:
                 self._last_request_at = time.monotonic()
                 self.request_count += 1
                 self.bytes_downloaded += len(resp.content)
-            except httpx.HTTPError as exc:  # transport-level failure
+            except httpx.HTTPError as exc:
                 self._last_request_at = time.monotonic()
                 last_err = f"transport error: {exc!r}"
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(min(2.0 * (2 ** attempt), 10.0))
                 continue
             if resp.status_code == 404:
@@ -81,7 +81,7 @@ class OLSClient:
                 last_err = f"HTTP {resp.status_code}"
                 retry_after = resp.headers.get("Retry-After")
                 delay = retry_after_seconds(retry_after, 2.0 * (2 ** attempt))
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(min(delay, 30.0))
                 continue
             raise RuntimeError(f"GET {url} -> HTTP {resp.status_code}: {resp.text[:200]}")

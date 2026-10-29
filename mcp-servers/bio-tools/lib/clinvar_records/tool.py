@@ -13,7 +13,7 @@ import time
 from .client import ClinVarClient
 from .records import parse_summary_doc
 
-# esummary accepts hundreds of ids per POST; keep one request per tool call.
+
 MAX_SEARCH_RETMAX = 200
 MAX_BATCH_ACCESSIONS = 50
 _VCV_RE = re.compile(r"^VCV(\d+)(?:\.\d+)?$", re.IGNORECASE)
@@ -27,7 +27,7 @@ class ClinVarRecords:
     def __init__(self, client: ClinVarClient) -> None:
         self.client = client
 
-    # -- search --------------------------------------------------------------
+
 
     def search(self, term: str, retmax: int) -> dict:
         """esearch + esummary: term -> {total, truncated, records}."""
@@ -41,15 +41,15 @@ class ClinVarRecords:
             "term": term,
             "total": total,
             "n_returned": len(records),
-            # capped page vs. upstream dropping a summary doc are different
-            # conditions: truncation is judged against the UID page esearch
-            # returned; dropped docs are reported in missing_uids.
+
+
+
             "truncated": total > len(uids),
             "missing_uids": missing,
             "records": records,
         }
 
-    # -- batch by accession ----------------------------------------------------
+
 
     def records_by_accessions(self, accessions: list[str],
                               deadline_s: float = 40.0) -> dict:
@@ -61,22 +61,22 @@ class ClinVarRecords:
         ``not_processed`` rather than blowing the transport budget.
         """
         cleaned = [a.strip() for a in accessions if a and a.strip()]
-        # Cap on the UNIQUE set (finding 3406986022): the esummary/esearch
-        # fan-out is keyed to unique accessions, so a batch whose raw count
-        # exceeds the cap but whose unique count is within it (duplicate /
-        # overlapping VCV lists) must not be spuriously rejected — matches
-        # the fleet siblings (dbsnp get_rsids, alphafold fetch_coverage).
-        pending = list(dict.fromkeys(cleaned))  # dedupe, keep order
+
+
+
+
+
+        pending = list(dict.fromkeys(cleaned))
         n_duplicate_skipped = len(cleaned) - len(pending)
         if len(pending) > MAX_BATCH_ACCESSIONS:
             raise ValueError(
                 f"too many accessions ({len(pending)} unique); max "
                 f"{MAX_BATCH_ACCESSIONS} per call")
-        uid_sources: dict[str, list[str]] = {}  # uid -> input accessions
+        uid_sources: dict[str, list[str]] = {}
         not_found: list[str] = []
         not_processed: list[str] = []
-        # Pass 1 — local-only resolution (VCV/numeric: the UID is the VCV
-        # number) + input validation; no network, so never deadline-bound.
+
+
         rcvs: list[str] = []
         for acc in pending:
             m = _VCV_RE.match(acc)
@@ -95,8 +95,8 @@ class ClinVarRecords:
             raise ValueError(
                 f"unrecognized accession {acc!r} (expected VCVnnn, RCVnnn, "
                 "or a bare ClinVar variation ID)")
-        # Pass 2 — RCVs (one esearch each); only these can trip the
-        # wall-clock deadline, so only RCVs land in not_processed.
+
+
         t0 = time.monotonic()
         for i, acc in enumerate(rcvs):
             if time.monotonic() - t0 > deadline_s:
@@ -113,7 +113,7 @@ class ClinVarRecords:
         records = self._summaries([u for u in uid_sources
                                    if u not in ("", None)],
                                   missing=missing_uids, sources=uid_sources)
-        # order is undefined for a batch lookup: sort for determinism
+
         records.sort(key=lambda r: r["variation_id"])
         return {
             "n_requested": len(cleaned),
@@ -125,7 +125,7 @@ class ClinVarRecords:
             "not_processed": not_processed,
         }
 
-    # -- rsID ------------------------------------------------------------------
+
 
     def records_by_rsid(self, rsid: str, retmax: int) -> dict:
         """rsID -> all ClinVar variation records mentioning it."""
@@ -147,7 +147,7 @@ class ClinVarRecords:
             "records": records,
         }
 
-    # -- internals ----------------------------------------------------------------
+
 
     def _summaries(self, uids: list[str], missing: list[str] | None = None,
                    sources: dict[str, list[str]] | None = None) -> list[dict]:

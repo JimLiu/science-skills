@@ -36,11 +36,11 @@ import requests
 from mcp_servers_common.ratelimit import retry_after_seconds
 
 API_BASE = "https://www.cbioportal.org/api"
-MIN_REQUEST_INTERVAL = 0.5   # politeness: <= 2 req/s
-TIMEOUT = 20.0               # per-request; tools make <= ~16 requests
-MAX_ATTEMPTS = 2             # initial try + <= 1 retry
+MIN_REQUEST_INTERVAL = 0.5
+TIMEOUT = 20.0
+MAX_ATTEMPTS = 2
 RETRY_STATUSES = {429, 500, 502, 503, 504}
-# One request returns a whole collection (verified: upstream's own default).
+
 PAGE_ALL = 10_000_000
 
 __version__ = "0.1.0"
@@ -80,7 +80,7 @@ class CBioPortalClient:
         self.bytes_downloaded = 0
         self._last_request_at = 0.0
 
-    # ------------------------------------------------------------------ core
+
 
     def _request(self, method: str, path: str,
                  params: dict[str, Any] | None = None,
@@ -97,7 +97,7 @@ class CBioPortalClient:
             except requests.RequestException as exc:
                 self._last_request_at = time.monotonic()
                 last_err = exc
-                if attempt < MAX_ATTEMPTS - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < MAX_ATTEMPTS - 1:
                     time.sleep(2.0)
                 continue
             self._last_request_at = time.monotonic()
@@ -108,7 +108,7 @@ class CBioPortalClient:
                     f"HTTP {resp.status_code} on {path}: {resp.text[:200]}")
                 retry_after = resp.headers.get("Retry-After", "")
                 delay = retry_after_seconds(retry_after, 2.0, cap=5.0)
-                if attempt < MAX_ATTEMPTS - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < MAX_ATTEMPTS - 1:
                     time.sleep(delay)
                 continue
             if resp.status_code == 404:
@@ -124,7 +124,7 @@ class CBioPortalClient:
             total = resp.headers.get("total-count")
             total_count = int(total) if total is not None and total.isdigit() else None
             if not resp.content:
-                # projection=META responses have an empty body by design.
+
                 return None, total_count
             try:
                 return resp.json(), total_count
@@ -135,7 +135,7 @@ class CBioPortalClient:
             f"giving up on {method} {path} after {MAX_ATTEMPTS} attempts: "
             f"{last_err!r}")
 
-    # --------------------------------------------------------------- helpers
+
 
     def get(self, path: str,
             params: dict[str, Any] | None = None) -> tuple[Any, int | None]:

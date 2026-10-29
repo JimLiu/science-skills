@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from .client import PDBClient, NotFoundError
 
-# Batch ceiling per tool call: 25 ids at <= 2 req/s stays well inside the
-# per-tool wall-clock budget (< 50 s) even with one retry.
+
+
 MAX_IDS_PER_CALL = 25
 
 
@@ -12,9 +12,9 @@ def normalize_pdb_id(pdb_id: str) -> str:
     return pdb_id.strip().upper()
 
 
-# --------------------------------------------------------------------------- #
-# entries
-# --------------------------------------------------------------------------- #
+
+
+
 def parse_entry(raw: dict) -> dict:
     info = raw.get("rcsb_entry_info", {}) or {}
     acc = raw.get("rcsb_accession_info", {}) or {}
@@ -70,9 +70,9 @@ def fetch_entry_records(client: PDBClient, pdb_ids: list[str]) -> list[dict]:
     return records
 
 
-# --------------------------------------------------------------------------- #
-# polymer entities
-# --------------------------------------------------------------------------- #
+
+
+
 def parse_polymer_entity(raw: dict, include_sequence: bool = False) -> dict:
     ent = raw.get("rcsb_polymer_entity", {}) or {}
     ids = raw.get("rcsb_polymer_entity_container_identifiers", {}) or {}
@@ -137,7 +137,7 @@ def fetch_entity_records(
     """
     pdb_id = normalize_pdb_id(pdb_id)
     if entity_ids is None:
-        entry = client.get_data("entry", pdb_id)  # raises NotFoundError on bad entry
+        entry = client.get_data("entry", pdb_id)
         all_ids = (entry.get("rcsb_entry_container_identifiers") or {}).get(
             "polymer_entity_ids") or []
         ids = all_ids[:MAX_IDS_PER_CALL]
@@ -168,9 +168,9 @@ def fetch_entity_records(
     }
 
 
-# --------------------------------------------------------------------------- #
-# ligands (nonpolymer entities + chem comp detail)
-# --------------------------------------------------------------------------- #
+
+
+
 def parse_chem_comp(raw: dict) -> dict:
     comp = raw.get("chem_comp", {}) or {}
     desc = raw.get("rcsb_chem_comp_descriptor", {}) or {}
@@ -199,7 +199,7 @@ def fetch_ligand_records(client: PDBClient, pdb_id: str, max_ligands: int = MAX_
     """
     pdb_id = normalize_pdb_id(pdb_id)
     max_ligands = max(1, min(int(max_ligands), MAX_IDS_PER_CALL))
-    entry = client.get_data("entry", pdb_id)  # raises NotFoundError on bad entry
+    entry = client.get_data("entry", pdb_id)
     np_ids = (entry.get("rcsb_entry_container_identifiers") or {}).get(
         "non_polymer_entity_ids") or []
     use_ids = np_ids[:max_ligands]

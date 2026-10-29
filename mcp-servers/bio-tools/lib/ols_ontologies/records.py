@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-# Fixed field order of a structured ontology record.
+
 RECORD_FIELDS = [
     "ontology_id",
     "title",
@@ -24,7 +24,7 @@ RECORD_FIELDS = [
     "description",
 ]
 
-DESCRIPTION_MAX_CHARS = 300  # descriptions are truncated to this length (documented)
+DESCRIPTION_MAX_CHARS = 300
 
 
 def parse_ontology_record(raw: dict) -> dict:

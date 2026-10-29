@@ -1,0 +1,33 @@
+{
+  "version": "0.1.71",
+  "source": {
+    "application": "Claude Science",
+    "bundle_id": "com.anthropic.operon",
+    "bundle_version": "0.1.71",
+    "build": {
+      "flavor": "release",
+      "user_type": "external",
+      "channel": "public",
+      "built_at": "2026-10-26T23:15:07Z",
+      "version": "0.1.71",
+      "platform": "darwin-arm64"
+    },
+    "cli_sha256": "7a9a230d4b338c1a856d8015b88c6fb8d38512126819d6bbd87c8c584f89eb53",
+    "assets_tar_sha256": "4f7b8446fc7e8a1d28c34dd3f6182f314e5867e570373f13a549de87d67c1d05"
+  },
+  "scope": [
+    "skills",
+    "mcp-servers"
+  ],
+  "tree_hash_format": "SHA-256 of sorted UTF-8 repository-relative path + NUL + lowercase file SHA-256 + LF for every regular file",
+  "trees": {
+    "skills": {
+      "files": 81,
+      "sha256": "acb462fb47032a57131b387283cafb9f5a217312ed1ba0994512feb8661e3e78"
+    },
+    "mcp-servers": {
+      "files": 352,
+      "sha256": "318b9427ac243d6a536cdbe53cace7c153328a85355b6c1ed2f17b40fbed6367"
+    }
+  }
+}

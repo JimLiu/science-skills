@@ -18,21 +18,21 @@ Probed facts this module depends on (verified live 2026-06-09):
 from __future__ import annotations
 
 import time
-from urllib.parse import quote
+from mcp_servers_common.pathseg import seg
 
 from .client import PacedJsonClient, UniBindApiError
 
 UNIBIND_BASE = "https://unibind.uio.no/api/v1"
 UCSC_BASE = "https://api.genome.ucsc.edu"
-PAGE_SIZE = 500          # server silently caps page_size at 500 (probed)
-WALK_DEADLINE_S = 40.0   # hard wall-clock stop for multi-page walks
-REGION_FETCH_CAP = 20_000  # items pulled from hubApi per region query
+PAGE_SIZE = 500
+WALK_DEADLINE_S = 40.0
+REGION_FETCH_CAP = 20_000
 
 _HUB_URL = ("https://unibind.uio.no/static/data/latest/"
             "UniBind_hubs_{collection}/UCSC/hub.txt")
 
-# Genomes served per hub (from the hubs' registered dbList; spo2 exists only
-# in the Permissive hub).
+
+
 HUB_GENOMES = {
     "Robust": ("hg38", "mm10", "ce11", "dm6", "danRer11", "sacCer3",
                "rn6", "araTha1"),
@@ -107,7 +107,7 @@ def search_datasets(client: PacedJsonClient, tf_name: str | None = None,
 
 def get_dataset(client: PacedJsonClient, tf_id: str) -> dict:
     """One dataset's detail, flattened: per-model TFBS counts + file URLs."""
-    d = client.get_json(f"/datasets/{quote(tf_id, safe='')}/")
+    d = client.get_json(f"/datasets/{seg(tf_id)}/")
     models = []
     for model_group in d.get("tfbs", []):
         for model_name, entries in model_group.items():
@@ -182,7 +182,7 @@ def tfbs_in_region(ucsc_client: PacedJsonClient, genome: str, chrom: str,
         raise UniBindApiError(
             f"hubApi response missing track data: {str(payload)[:300]}")
     items = payload["UniBind"]
-    # hubApi may return a dict keyed by chrom for multi-chrom queries.
+
     if isinstance(items, dict):
         items = [row for rows in items.values() for row in rows]
     scan_complete = not payload.get("maxItemsLimit", False)

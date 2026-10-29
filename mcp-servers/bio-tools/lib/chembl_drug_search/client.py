@@ -33,14 +33,14 @@ from mcp_servers_common.ratelimit import retry_after_seconds
 
 DEFAULT_BASE_URL = "https://www.ebi.ac.uk/chembl/api/data"
 DEFAULT_PAGE_SIZE = 1000
-DEFAULT_MIN_INTERVAL_S = 0.21  # <= ~5 req/s on the shared EBI host
+DEFAULT_MIN_INTERVAL_S = 0.21
 DEFAULT_TIMEOUT_S = 60.0
 DEFAULT_MAX_RETRIES = 4
-DEFAULT_BATCH_SIZE = 50  # IDs per __in filter (keeps URLs well under length limits)
+DEFAULT_BATCH_SIZE = 50
 USER_AGENT = "chembl-drug-search/0.1.0 (bio-tools MCP-rebuild wave)"
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 
-#: molecule fields fetched for joined drug records (kept lean on purpose)
+
 DRUG_FIELDS = (
     "molecule_chembl_id,pref_name,max_phase,first_approval,"
     "withdrawn_flag,black_box_warning,molecule_type,molecule_hierarchy"
@@ -87,7 +87,7 @@ class ChemblDrugSearchClient:
         self.bytes_downloaded = 0
         self._last_request_t = 0.0
 
-    # ------------------------------------------------------------- low level
+
 
     def _throttle(self) -> None:
         wait = self.min_interval_s - (time.monotonic() - self._last_request_t)
@@ -107,7 +107,7 @@ class ChemblDrugSearchClient:
                 last_error = f"{type(exc).__name__}: {exc}"
                 if attempt == self.max_retries:
                     break
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(self.backoff_s * (2**attempt))
                 continue
             self.request_count += 1
@@ -120,7 +120,7 @@ class ChemblDrugSearchClient:
                     break
                 retry_after = resp.headers.get("Retry-After", "")
                 delay = retry_after_seconds(retry_after, self.backoff_s * (2**attempt))
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(delay)
                 continue
             if resp.status_code >= 400:
@@ -169,7 +169,7 @@ class ChemblDrugSearchClient:
             )
         return records, total
 
-    # -------------------------------------------------------- compound search
+
 
     def search_by_name(
         self,
@@ -294,7 +294,7 @@ class ChemblDrugSearchClient:
             raise MoleculeNotFoundError(f"molecule ChEMBL IDs not found: {missing}")
         return [found[i] for i in ids if i in found]
 
-    # ----------------------------------------------------------- drug search
+
 
     def indication_rows(
         self,
@@ -358,7 +358,7 @@ class ChemblDrugSearchClient:
 
         ``max_drugs`` bounds the molecule/warning join to the first N parents
         (best phase first) — ``total_parents`` always reflects the full distinct-parent
-        count. Operon vendored-copy addition (#2875 review 3377922588):
+        count. Operon vendored-copy addition:
         without it a broad indication joins every matching parent (unbounded
         N+1 over throttled EBI calls) before callers can page.
 
@@ -376,19 +376,19 @@ class ChemblDrugSearchClient:
             ph = float(ph) if ph is not None else -1.0
             if ph > phase_by_parent.get(p, -2.0):
                 phase_by_parent[p] = ph
-        # Most clinically advanced first (best phase desc), ID as deterministic
-        # tiebreak — lexical CHEMBL-id sort alone picks "CHEMBL10…" before
-        # "CHEMBL2…" when max_drugs truncates, dropping approved drugs in
-        # favour of arbitrary early IDs.
+
+
+
+
         all_parents = sorted(phase_by_parent,
                              key=lambda p: (-phase_by_parent[p], p))
         parents = all_parents if max_drugs is None else all_parents[:max_drugs]
         molecules = {
             m["molecule_chembl_id"]: m
-            # missing_ok: a ChEMBL referential gap (drug_indication row whose
-            # parent lacks a /molecule record) degrades to the per-parent
-            # `.get(parent, {})` fallback below instead of aborting the whole
-            # indication search (review 3379150556).
+
+
+
+
             for m in (self.get_molecules(parents, fields=DRUG_FIELDS,
                                          missing_ok=True) if parents else [])
         }

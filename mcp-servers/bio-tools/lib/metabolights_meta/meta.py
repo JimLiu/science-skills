@@ -26,9 +26,9 @@ from .client import MetaboLightsClient
 _ACCESSION_RE = re.compile(r"^MTBLS\d+$")
 
 
-# --------------------------------------------------------------------------- #
-# helpers
-# --------------------------------------------------------------------------- #
+
+
+
 def _accession_sort_key(acc: str) -> tuple:
     """Numeric-aware sort key: MTBLS2 < MTBLS10 < MTBLS100."""
     m = re.match(r"^([A-Z]+)(\d+)$", acc)
@@ -50,9 +50,9 @@ def canonical_json(obj: Any) -> str:
                       allow_nan=False)
 
 
-# --------------------------------------------------------------------------- #
-# extraction (pure function over the raw payload)
-# --------------------------------------------------------------------------- #
+
+
+
 def extract_study_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Convert a raw ``/studies/public/study/{acc}`` JSON payload into a flat record.
 
@@ -67,7 +67,7 @@ def extract_study_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     accession = _clean_str(content.get("studyIdentifier"))
 
-    # organisms: list of {organismName, organismPart}
+
     organisms = []
     for org in content.get("organism") or []:
         name = _clean_str(org.get("organismName"))
@@ -76,7 +76,7 @@ def extract_study_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
             organisms.append({"organism": name, "organism_part": part})
     organisms.sort(key=lambda o: (o["organism"] or "", o["organism_part"] or ""))
 
-    # assays: measurement / technology / platform per assay sheet
+
     assays = []
     for a in content.get("assays") or []:
         assays.append(
@@ -92,16 +92,16 @@ def extract_study_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
                                a["filename"] or ""))
     technologies = sorted({a["technology"] for a in assays if a["technology"]})
 
-    # factors: study design factors (names only at this level)
+
     factors = sorted({_clean_str(f.get("name")) for f in (content.get("factors") or [])
                       if _clean_str(f.get("name"))})
 
-    # design descriptors (e.g. "EFO:diabetes mellitus")
+
     descriptors = sorted({_clean_str(d.get("description"))
                           for d in (content.get("descriptors") or [])
                           if _clean_str(d.get("description"))})
 
-    # sample count: number of rows in the parsed sample table
+
     sample_table = content.get("sampleTable") or {}
     sample_rows = sample_table.get("data") or []
     sample_count = len(sample_rows)
@@ -127,9 +127,9 @@ def extract_study_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
     return record
 
 
-# --------------------------------------------------------------------------- #
-# retrieval
-# --------------------------------------------------------------------------- #
+
+
+
 def get_study_metadata(accession: str, client: Optional[MetaboLightsClient] = None
                        ) -> Dict[str, Any]:
     """Fetch one study and return its structured metadata record."""
@@ -140,7 +140,7 @@ def get_study_metadata(accession: str, client: Optional[MetaboLightsClient] = No
     payload = client.get_json(f"studies/public/study/{accession}")
     record = extract_study_metadata(payload)
     if record["accession"] != accession:
-        # defensive: the WS echoes the identifier; mismatch would mean a routing bug
+
         raise ValueError(
             f"requested {accession} but payload identifies as {record['accession']}"
         )

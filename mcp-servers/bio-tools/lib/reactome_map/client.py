@@ -16,7 +16,7 @@ import httpx
 CONTENT_BASE = "https://reactome.org/ContentService"
 ANALYSIS_BASE = "https://reactome.org/AnalysisService"
 
-#: HTTP status codes that trigger a retry (transient server-side conditions).
+
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
@@ -66,7 +66,7 @@ class ReactomeClient:
     _last_request_t: float = field(default=0.0, repr=False)
     _client: httpx.Client | None = field(default=None, repr=False)
 
-    # -- lifecycle -----------------------------------------------------------------
+
     def _http(self) -> httpx.Client:
         if self._client is None:
             kwargs: dict[str, Any] = {
@@ -90,7 +90,7 @@ class ReactomeClient:
     def __exit__(self, *exc: Any) -> None:
         self.close()
 
-    # -- counters ------------------------------------------------------------------
+
     @property
     def http_requests(self) -> int:
         """Total outbound HTTP requests issued (each retry attempt counts)."""
@@ -103,7 +103,7 @@ class ReactomeClient:
     def reset_counters(self) -> None:
         self.log = []
 
-    # -- core request loop ----------------------------------------------------------
+
     def _throttle(self) -> None:
         if self.min_interval_s <= 0:
             return
@@ -160,7 +160,7 @@ class ReactomeClient:
             f"{method} {url} failed after {attempts} attempts: {last_exc!r}"
         )
 
-    # -- ContentService ---------------------------------------------------------------
+
     def database_version(self) -> str:
         """Reactome database release version (ContentService /data/database/version)."""
         resp = self.request("GET", f"{CONTENT_BASE}/data/database/version")
@@ -195,7 +195,7 @@ class ReactomeClient:
         )
         return resp.json()
 
-    # -- AnalysisService ----------------------------------------------------------------
+
     def analyse_identifiers(
         self,
         identifiers: list[str],

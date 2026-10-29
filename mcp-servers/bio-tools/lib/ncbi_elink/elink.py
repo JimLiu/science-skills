@@ -23,7 +23,7 @@ def canonical_json(obj) -> str:
 
 
 def _uid_sort_key(uid: str) -> tuple[int, str]:
-    # numeric ascending for digit strings, stable fallback otherwise
+
     return (len(uid), uid) if uid.isdigit() else (10**9, uid)
 
 

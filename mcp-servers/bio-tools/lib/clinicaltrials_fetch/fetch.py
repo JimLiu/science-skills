@@ -39,7 +39,7 @@ def fetch(spec: FilterSpec | dict[str, Any],
             client.close()
 
     records = [trim_study(s) for s in raw_studies]
-    # Deterministic ordering + defensive dedup by NCT ID.
+
     by_id: dict[str, dict] = {}
     for rec in records:
         nct = rec.get("nctId") or ""

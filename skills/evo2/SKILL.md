@@ -40,16 +40,38 @@ metadata:
 ### Installation
 
 ```bash
-pip install evo2
-# Weights pulled from Hugging Face on first model load.
+pip install evo2==0.5.5   # pinned for supply-chain hygiene — bump via PR (matches envs/genomics_evo2_gpu.py)
+# Pin the weights too: fetch the 7B checkpoint at a fixed Hugging Face revision (the
+# one envs/genomics_evo2_gpu.py hydrates) now, so the load below names exactly that
+# file and never resolves 'main'. (evo2_40b and evo2_1b_base are not pinned here.)
+python -c 'from huggingface_hub import hf_hub_download; print(hf_hub_download("arcinstitute/evo2_7b", "evo2_7b.pt", revision="bda0089f92582d5baabf0f22d9fc85f3588f6b58"))'   # pinned 2026-06-28
 ```
 
 ### Loading and scoring
 
 ```python
+import pathlib, re
+from huggingface_hub import hf_hub_download
+from huggingface_hub.constants import HF_HUB_CACHE
+from huggingface_hub.utils import LocalEntryNotFoundError
 from evo2 import Evo2
 
-model = Evo2("evo2_7b")        # or "evo2_40b" — see model table
+# the pinned 7B checkpoint fetched at install: with a commit-hash revision already in the
+# cache hf_hub_download returns its path at once, no network; local_files_only makes a
+# missing file fail here instead of starting a ~14 GB download in the kernel (keep
+# HF_HOME the same for the install step and the kernel). Other models: Evo2("evo2_40b") etc.
+REV = "bda0089f92582d5baabf0f22d9fc85f3588f6b58"
+try:
+    ckpt = hf_hub_download("arcinstitute/evo2_7b", "evo2_7b.pt", revision=REV, local_files_only=True)
+except LocalEntryNotFoundError:
+    # a cache filled through a Hugging Face mirror names the snapshot folder by the mirror's
+    # own id and records that id in refs/<REV>: load that snapshot, still offline (never refs/main)
+    ref = pathlib.Path(HF_HUB_CACHE, "models--arcinstitute--evo2_7b", "refs", REV)
+    mid = ref.read_text().strip() if ref.is_file() else ""
+    if not re.fullmatch(r"[0-9a-f]{40}", mid):   # only a commit id recorded for the pin; anything else fails as before
+        raise
+    ckpt = hf_hub_download("arcinstitute/evo2_7b", "evo2_7b.pt", revision=mid, local_files_only=True)
+model = Evo2("evo2_7b", local_path=ckpt)   # keep the model name explicit: it selects the packaged config
 seqs = ["ATCG" * 50, "GGGCTTAA" * 25]
 ll = model.score_sequences(seqs)   # → list[float], mean per-token log-likelihood
 print(ll)
@@ -70,9 +92,9 @@ print(out.sequences[0])
 
 | Name        | Params | Context | VRAM (bf16) | Notes                              |
 | ----------- | ------ | ------- | ----------- | ---------------------------------- |
-| `evo2_7b`   | 7 B    | 1 M nt  | ~22 GB      | Default; fits on a single 24 GB+ GPU |
-| `evo2_40b`  | 40 B   | 1 M nt  | ~78 GB      | H100 80 GB or multi-GPU            |
-| `evo2_1b_base` | 1 B | 8 K nt  | ~6 GB       | FP8 path requires sm_89+ (H100)    |
+| `evo2_7b`   | 7 B    | 1 M nt  | ~22 GB      | Default; fits on a single 24 GB+ GPU; the recipe above pins its checkpoint to a fixed revision |
+| `evo2_40b`  | 40 B   | 1 M nt  | ~78 GB      | H100 80 GB or multi-GPU; not pinned here (loads upstream's current revision) |
+| `evo2_1b_base` | 1 B | 8 K nt  | ~6 GB       | FP8 path requires sm_89+ (H100); not pinned here |
 
 ## Output format
 
@@ -104,37 +126,48 @@ Need a DNA model?
 c = host.compute.create(provider)
 job = c.submit_job(
     intent="Evo2-7B score 200bp variant window — 1×GPU, ~2 min",
-    inputs=[{"src": "score_evo2.py", "dst_filename": "score_evo2.py"}],
+    inputs=["score_evo2.py"],
     command="python3 score_evo2.py",   # env selection is host-specific — see compute_details for your provider
     outputs=["scores.json"],
-    timeout_seconds=1800,
+    run_timeout_s=1800,
 )
-print(job.job_id)   # cell ends here — kernel never blocks on compute
+# the Job repr just printed itself (id, notes) — cell ends here; the kernel never waits on the job
 ```
 
 Then call the `wait_for_notification` brain-tool. When the
 `compute_done` notification arrives, act on its payload:
 
 ```python
-save_artifacts(payload["featured_files"])   # paths under hpc/<job_id>/
+save_artifacts(payload["output_files"])   # paths under hpc/<job_id>/
 ```
 
-For the full result dict (`output_files`, `remote_workdir`, …), re-enter the
-kernel: `c.attach_job(job_id).result()` then `c.close()`. See the
+For the full record (`files`, `stdout_tail`, `notes`, …), re-enter the
+kernel: `res = c.attach_job(job_id).result()` then `c.close(intent=...)`. See the
 `remote-compute-ssh` / `remote-compute-modal` skill for the orchestration
 details.
 
 Inside `score_evo2.py`, point `HF_HOME` at the provider's weight-cache mount
 (path is in `compute_details`) and set `HF_HUB_OFFLINE=1` so the loader
-doesn't try to write `refs/` into a read-only mount. Weight footprint:
-~15 GB (7B), ~80 GB (40B).
+doesn't try to write `refs/` into a read-only mount — both before `huggingface_hub`
+or `evo2` is imported (or in the job's environment), since the cache path is fixed
+at import. The 7B mount must hold the
+pinned revision: hydrate it with `revision="bda0089f92582d5baabf0f22d9fc85f3588f6b58"`
+as the bundled Modal environment and the SSH `genomics-gpu` preset's populate
+recipe do (the 40B mount stays unpinned); on a 7B mount built from another commit
+the load line fails with `LocalEntryNotFoundError` — rebuild that mount at the
+pinned revision rather than loading what it holds. A mount filled at the pinned revision
+through a Hugging Face mirror lists the snapshot under the mirror's own id instead; the load block finds
+it through the cache's `refs/` entry for the pinned revision, which such a fetch records.
+Weight footprint:
+~14 GB (7B: one 13.8 GB checkpoint per the Hugging Face file listing at the
+pinned revision, not re-measured here), ~80 GB (40B).
 
 
 ## Typical performance
 
 | Task                        | 7B on H100 | Notes                       |
 | --------------------------- | ---------- | --------------------------- |
-| Model load (cached)         | ~5-7 min   | First call hydrates weights |
+| Model load (cached)         | ~5-7 min   | Weights fetched at install; the first call loads them from the cache |
 | `score_sequences`, 200×200bp| ~10-20 s   | After load                  |
 | `generate`, 1×512 nt        | ~15 s      |                             |
 
@@ -144,8 +177,9 @@ doesn't try to write `refs/` into a read-only mount. Weight footprint:
 | ------------------------------------ | ------------------------------ | ------------------------------------------ |
 | `Transformer Engine not installed`   | No FP8 — falls back to bf16    | Informational only on non-H100; ignore     |
 | OOM on load                          | 40B on <80 GB GPU              | Use `evo2_7b` or shard with `device_map`   |
+| `LocalEntryNotFoundError` on load     | The pinned checkpoint is not in this `HF_HOME`: the install step was not run with it, or (remote) the weight mount was hydrated at another revision | Locally, run the install step's `hf_hub_download` line, then load again; on a provider mount, first check `HF_HOME` was set before the imports and list `$HF_HOME/hub/models--arcinstitute--evo2_7b/snapshots/` to see which commit the mount holds (a mirror-filled cache shows the mirror's id there and still loads if `refs/<pinned revision>` names it), then rebuild it at the pinned revision if it holds neither; keep `local_files_only=True` (turning it off would download inside the kernel) |
 | HF tries to write `refs/main`        | `HF_HOME` points at RO mount   | Set `HF_HUB_OFFLINE=1`                     |
-| `dtype mismatch` in `score_sequences`| Passing tensors not strings    | Pass `list[str]`; the API tokenises for you |
+| `dtype mismatch` in `score_sequences`| Passing tensors not strings    | Pass `list[str]`; the API tokenizes for you |
 
 ---
 

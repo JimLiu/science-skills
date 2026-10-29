@@ -31,7 +31,7 @@ always emitted, so no information is lost.
 
 from __future__ import annotations
 
-# Order in which entry types are listed in the summary (architecture-first reading order).
+
 TYPE_ORDER = [
     "family",
     "domain",
@@ -109,7 +109,7 @@ def build_summary(accession: str, count: int, results: list[dict]) -> dict:
     entries = []
     for item in results:
         meta = item.get("metadata", {})
-        # the 'proteins' list contains exactly the queried protein for this endpoint
+
         protein_match = None
         for prot in item.get("proteins", []):
             if prot.get("accession", "").upper() == accession.upper():

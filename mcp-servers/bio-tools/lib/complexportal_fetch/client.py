@@ -13,7 +13,7 @@ from mcp_servers_common.ratelimit import retry_after_seconds
 
 BASE_URL = "https://www.ebi.ac.uk/intact/complex-ws"
 USER_AGENT = "complexportal-fetch/0.1 (bio-tools benchmark suite)"
-MIN_INTERVAL_S = 0.5          # <= 2 req/s on the shared EBI host
+MIN_INTERVAL_S = 0.5
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
@@ -40,7 +40,7 @@ class ComplexPortalClient:
         self.max_retries = max_retries
         self.min_interval_s = min_interval_s
         self._last_request_t = 0.0
-        # accounting (read by the benchmark harness)
+
         self.request_count = 0
         self.bytes_downloaded = 0
         self._client = httpx.Client(
@@ -49,7 +49,7 @@ class ComplexPortalClient:
             transport=transport,
         )
 
-    # ------------------------------------------------------------------ #
+
     def close(self) -> None:
         self._client.close()
 
@@ -59,7 +59,7 @@ class ComplexPortalClient:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    # ------------------------------------------------------------------ #
+
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_t
         if elapsed < self.min_interval_s:
@@ -80,7 +80,7 @@ class ComplexPortalClient:
                 self._last_request_t = time.monotonic()
                 self.request_count += 1
                 self.bytes_downloaded += len(resp.content)
-            except httpx.TransportError as exc:          # network-level failure
+            except httpx.TransportError as exc:
                 self._last_request_t = time.monotonic()
                 last_err = exc
                 if attempt < self.max_retries:
@@ -94,9 +94,9 @@ class ComplexPortalClient:
                 raise NotFoundError(f"not found: {url}")
             if resp.status_code in RETRY_STATUS and attempt < self.max_retries:
                 retry_after = resp.headers.get("Retry-After")
-                # Concrete fallback — passing the loop-local `wait` was an
-                # UnboundLocalError on the FIRST retryable response carrying
-                # Retry-After (review 3390063488).
+
+
+
                 wait = retry_after_seconds(
                     retry_after, min(2.0 * 2 ** attempt, 30.0))
                 time.sleep(wait)
@@ -105,8 +105,8 @@ class ComplexPortalClient:
             raise ComplexPortalError(f"HTTP {resp.status_code} for {url}: {resp.text[:300]}")
         raise ComplexPortalError(f"retries exhausted for {url}: {last_err}")
 
-    # ------------------------------------------------------------------ #
-    # endpoint helpers
+
+
     def get_complex(self, complex_ac: str) -> dict:
         """Full single-complex record from /complex/{AC}."""
         return self.get_json(f"complex/{urllib.parse.quote(complex_ac, safe='')}")

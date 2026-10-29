@@ -1,10 +1,10 @@
 """Canonicalize ClinVar esummary documents into lean JSON-able records."""
 from __future__ import annotations
 
-# Official ClinVar review-status -> gold-star mapping
-# (https://www.ncbi.nlm.nih.gov/clinvar/docs/review_status/). Both the
-# current "conflicting classifications" wording and the pre-2024
-# "conflicting interpretations" wording are mapped.
+
+
+
+
 GOLD_STARS = {
     "practice guideline": 4,
     "reviewed by expert panel": 3,
@@ -20,7 +20,7 @@ GOLD_STARS = {
     "no assertion provided": 0,
 }
 
-# esummary's "absent date" sentinel.
+
 _NO_DATE = "1/01/01 00:00"
 
 

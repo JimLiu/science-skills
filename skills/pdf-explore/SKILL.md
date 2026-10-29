@@ -14,7 +14,7 @@ over and over. And when the answer is "every page" (list all the
 datasets / citations / figures / benchmarks mentioned anywhere in this
 document), reading the whole thing page-by-page is the expensive way to
 get it. This skill parses the PDF once in the Python kernel and runs one
-cheap haiku call per page, **in parallel**, so you load only what
+cheap small-model call per page, **in parallel**, so you load only what
 matters — or sweep every page without ever putting the pages in your own
 context.
 
@@ -84,10 +84,10 @@ for e in pdf_outline("report.pdf"):
 
 Free and instant when the PDF has an embedded outline (most
 LaTeX-compiled papers do). Falls back to a single batched LLM call on
-text-layer ≤150pp docs (~$0.001-0.003 total), or per-page LLM heading
-extraction on scanned/>150pp (~$0.002/page). For a semantic question the
-outline doesn't obviously answer ("where do they discuss
-limitations"), fall through to `pdf_scan`.
+text-layer ≤150pp docs, or per-page LLM heading extraction on
+scanned/>150pp. For a semantic question the outline doesn't obviously
+answer ("where do they discuss limitations"), fall through to
+`pdf_scan`.
 
 ## Recipe — find the pages relevant to a query
 
@@ -246,21 +246,22 @@ don't need to set this. `"text"`/`"image"` force one or the other.
 
 ## Cost & budget
 
-~800 input + 100 output tokens/page in text mode. The sweep helpers in
-`kernel.py` pin `PDF_DEFAULT_MODEL = "claude-haiku-4-5"` explicitly on
-every request — explicit `model=` wins over the kernel default, so the
-sweep is haiku-priced (≈ $0.001–0.003/page depending on page length)
-regardless of deployment config. (Ad-hoc `host.llm()` calls you make
-yourself are different: bare calls use the Haiku-class kernel default
-via `[llm] kernel_default_model` — check `help(host.llm)` if cost
-matters there.) Don't
-pass a heavier `model=` for extraction; heavier models cost 10-30×
-more and add nothing to recall-complete per-page pulls. For a very
-large document you can
-scan a subset via `pages=range(1, n, 3)`, but stride sampling **can
-miss** a narrow relevant span between unrelated neighbors; prefer
-`pdf_outline` → read the section you want when the document has
-structure.
+About 1,200 tokens a page in text mode, nearly all of it input.
+The sweep helpers in `kernel.py` name no model unless you pass
+`model=`. Like a bare `host.llm()` call of your own, they run on the
+Haiku-class kernel default via `[llm] kernel_default_model`; a
+deployment that changed that key pays its model's price (check
+`help(host.llm)` if cost matters). Their requests are built for a
+Haiku-class model (a forced tool choice, thinking off): a kernel default
+that refuses either fails each request with the API's own error. A
+release build refuses a frame's further `host.llm` calls once they have
+used 2,000,000 tokens (`[llm] kernel_sdk_token_ceiling`): roughly 1,600
+text-mode pages. Don't pass a heavier `model=` for extraction; heavier
+models cost far more and add nothing to recall-complete per-page pulls.
+For a very large document you can scan a subset via
+`pages=range(1, n, 3)`, but stride sampling **can miss** a narrow
+relevant span between unrelated neighbors; prefer `pdf_outline` → read
+the section you want when the document has structure.
 
 ## Caching
 

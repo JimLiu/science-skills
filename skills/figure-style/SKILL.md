@@ -1,6 +1,6 @@
 ---
 name: figure-style
-description: "Publication-grade figure correctness and legibility rules. Load before drawing any plot and call `apply_figure_style()` — sets a role-mapped font-size ladder, outward ticks, frameless legends, and 300-dpi output. The skill is a checklist, not a house look: data fidelity (claim-titles tested against every row, excluded data never enters summaries), label economy (floor and ceiling), colour threading, chart-choice-by-data-shape, layout, and a render-then-verify QA loop (bbox collision + per-panel perceptual check). Ships helpers: focal_palette, bar_with_points, strip_with_median, end_of_line_labels, panel_letter, set_frame, panel_crops. For multi-panel figures load `figure-composer`; for whole-paper figure arc load `paper-narrative`."
+description: "Publication-grade figure correctness and legibility rules for final-deliverable figures — not every plot. Quick look or iterating on the analysis (EDA scatters, sanity-check histograms)? Plot plainly without this skill. Producing a figure that ships — report, paper, export, or kept artifact — load this skill first and call `apply_figure_style()` — sets a role-mapped font-size ladder, outward ticks, frameless legends, and 300-dpi output. The skill is a checklist, not a house look: data fidelity (claim-titles tested against every row, excluded data never enters summaries), label economy (floor and ceiling), color threading, chart-choice-by-data-shape, layout, and a render-then-verify QA loop (bbox collision + per-panel perceptual check). Ships helpers: focal_palette, bar_with_points, strip_with_median, end_of_line_labels, panel_letter, set_frame, panel_crops. For multi-panel figures load `figure-composer`; for whole-paper figure arc load `paper-narrative`."
 license: Apache-2.0
 ---
 
@@ -9,15 +9,22 @@ license: Apache-2.0
 
 *A checklist for correct, legible, internally-consistent scientific figures. This
 skill does not impose a visual house style — frame, font, and palette are
-parameters. Load it and call `apply_figure_style()` before any plot.*
+parameters. Once loaded, call `apply_figure_style()` before plotting.*
 
 ## §0 Scope
+
+**Load trigger** (same rule as the system prompt's "Publication-grade plots"
+section): this skill is for **final-deliverable figures** — those shipping in a
+report, paper, or export, or saved as an artifact the user will keep — not for
+exploratory/intermediate plots (quick looks, EDA, sanity checks), which are
+drawn plainly without it. Once loaded, "every plot" below means every plot you
+render toward the deliverable.
 
 §1–§3, §8, and §9 are **correctness** — they apply to every plot, in every
 context, and have no aesthetic content. §4–§7 are **guidance** — defaults that
 produce a clean result but that a deliberate alternative can override
 (individual rules inside §4–§7 that state a factual/perceptual invariant — e.g.
-§4.4 semantic-zero centring, §4.5 CVD, §6.9 leader anchoring — still bind). On
+§4.4 semantic-zero centering, §4.5 CVD, §6.9 leader anchoring — still bind). On
 its own, this skill is the inner tier (make one plot good); `figure-composer`
 and `paper-narrative` supply multi-panel and whole-paper context.
 
@@ -31,7 +38,7 @@ and named in the key. It **never** enters a summary statistic plotted alongside
 the included rows.
 
 **1.2 Comparable conditions only.** Arms measured under non-comparable
-conditions (different N, epoch budget, initialisation, protocol) are not plotted
+conditions (different N, epoch budget, initialization, protocol) are not plotted
 as visual peers. Separate them with a facet break or a marker on the label, and
 state the difference once in the caption.
 
@@ -74,7 +81,7 @@ training"), never a bare role word ("baseline", "previous"). Any term a general
 scientist can't parse gets a one-word gloss.
 
 **2.2 Ceiling.** Per panel: title + axis labels + tick labels + series identity
-(labelled once per row of small multiples) + at most 2–3 result annotations.
+(labeled once per row of small multiples) + at most 2–3 result annotations.
 Count the strings; >6 beyond axes/ticks means you're over. The ceiling counts
 *narrative* annotations (callouts, value labels, brackets) — identity labels are
 floor, not budget.
@@ -131,11 +138,11 @@ they were before.
 
 ---
 
-## §4 Colour
+## §4 Color
 
-**4.1 Threading.** Once a colour is bound to an entity (a method, a feature, a
-condition), reuse that exact colour for every mark representing that entity
-across the figure — line, fill, marker, text, heatmap row. Colour *is* the
+**4.1 Threading.** Once a color is bound to an entity (a method, a feature, a
+condition), reuse that exact color for every mark representing that entity
+across the figure — line, fill, marker, text, heatmap row. Color *is* the
 cross-reference; a reader should never have to consult a legend twice.
 
 **4.2 Limit hues.** Use as few distinct hues as the data require. When the
@@ -151,15 +158,15 @@ the outer level picks the hue family and the inner level samples within it.
 
 **4.4 Continuous and diverging.** Use a perceptually uniform sequential map for
 generic continuous values; a single-hue ramp for ordinal rank or size; a
-diverging map for signed quantities — **always** centred at the semantically
+diverging map for signed quantities — **always** centered at the semantically
 meaningful zero (0, 1.0, or median), never the data midpoint.
 
 **4.5 CVD safety.** Never rely on a red/green contrast for a binary or opposing
 distinction. Any binary pair should remain distinguishable in deuteranopia
 simulation. Reserve one alarm hue for error/anomaly/perturbation marks and do
-not reuse it as a data-series colour.
+not reuse it as a data-series color.
 
-**4.6 Two palettes, two legends.** When a figure uses two categorical colour
+**4.6 Two palettes, two legends.** When a figure uses two categorical color
 systems, each legend sits adjacent to the first panel where its palette applies.
 
 ---
@@ -177,7 +184,7 @@ role's size, fix the layout or shorten the text — don't reach for an
 intermediate size. `apply_figure_style(sizes=(8,7,6))` sets the ladder.
 
 **5.3 Nomenclature.** Species, gene, and variable names that scientific
-convention italicises are italicised. Abbreviated codes inherit the rule; expand
+convention italicizes are italicized. Abbreviated codes inherit the rule; expand
 once on first appearance.
 
 **5.4 Magnitude suffixes.** Large counts use `k / M / B` (`4.2B`, `120 kb`),
@@ -190,7 +197,7 @@ contrast; if it doesn't, place the text outside the mark.
 
 **5.6 No internal codes.** Axis labels use plain-language names; codebase
 abbreviations appear only in parentheses after the readable name or in the
-caption. Comparator series are labelled with what they *are*, not a role word.
+caption. Comparator series are labeled with what they *are*, not a role word.
 
 **5.7 Panel letters.** Bold, top-left, outside the axes box. Case follows the
 target venue's convention; `panel_letter(ax, 'a', case=...)` handles either.
@@ -223,14 +230,14 @@ stack them as small panels with a shared x-axis or use a ridgeline. Overlay only
 when the separation is visually clear.
 
 **6.5 Matrices.** When a heatmap is small enough to read (< ~200 cells), print
-the value in every cell. State the threshold once in the colourbar label.
+the value in every cell. State the threshold once in the colorbar label.
 
 **6.6 Embeddings.** Dimensionality-reduction scatters (UMAP, t-SNE, PCA) drop
 ticks and tick labels; a small corner arrow pair names the axes. Clusters are
-labelled by thin leader lines to text in surrounding whitespace.
+labeled by thin leader lines to text in surrounding whitespace.
 
 **6.7 Paired prediction vs. observation.** Stack the two as adjacent tracks with
-identical x and colour; let the alignment carry the comparison. Target regions
+identical x and color; let the alignment carry the comparison. Target regions
 are translucent spans registered in the legend.
 
 **6.8 Insets.** Connect a detail inset to its source region visibly — a bounding
@@ -247,7 +254,7 @@ the row it names.
 
 **7.1 Show what is measured before the result.** A reader should grasp what's
 being compared before seeing the comparison — via a plain-language title, a
-labelled schematic, or panel ordering. Any schematic uses the same words and
+labeled schematic, or panel ordering. Any schematic uses the same words and
 glyphs as the data panels' labels.
 
 **7.2 One figure, one message.** A multi-panel figure has a single sentence it
@@ -255,7 +262,7 @@ is trying to make true. Every panel either states it, supports it, or bounds it;
 panels that do none of these belong in supplement.
 
 **7.3 Legends live in whitespace.** Frameless, placed inside the figure's
-natural whitespace, or replaced by direct labelling. Legend entries are
+natural whitespace, or replaced by direct labeling. Legend entries are
 swatch-first, left-aligned, and resolve every visually distinct glyph on the
 panel.
 
@@ -280,8 +287,8 @@ These are correctness failures, not style preferences:
 
 - Red and green as opposing categories.
 - Filled bars on a log-scaled value axis.
-- Colourbar ticks that are evenly spaced but miss the semantic centre.
-- A diverging colormap whose centre is the data midpoint, not the semantic zero.
+- Colorbar ticks that are evenly spaced but miss the semantic center.
+- A diverging colormap whose center is the data midpoint, not the semantic zero.
 - An axis title that restates the tick labels.
 - Explaining the direction of goodness only in the caption.
 - A "reference" line drawn at a value that is itself one of the plotted points.
@@ -313,7 +320,7 @@ spine is not a finding. Fix (move, shorten, stagger) and re-save until clean.
 
 **9.2 Perceptual check.** The bbox check is geometric, not perceptual — it will
 not catch a low-contrast label, a leader that crosses three others, or a series
-colour mistakable for another. Crop the saved PNG to each panel and look:
+color mistakable for another. Crop the saved PNG to each panel and look:
 ```python
 fig.savefig("figure.png")
 for letter, box in panel_crops(fig).items():
@@ -321,7 +328,7 @@ for letter, box in panel_crops(fig).items():
 ```
 For each crop: Is every glyph and mark legible against its background? Does the
 smallest plotted element have a stroke or stub? Do any leaders cross? Could any
-series colour be mistaken for another? Does the legend sit beside what it keys?
+series color be mistaken for another? Does the legend sit beside what it keys?
 A perceptual defect that passes §9.1 is still a defect.
 
 ---

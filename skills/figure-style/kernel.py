@@ -16,7 +16,7 @@ def apply_figure_style(*, frame="open", font=None, sizes=(8, 7, 6), grid=False):
     import matplotlib as mpl
     if frame not in ("open", "boxed", "none"):
         raise ValueError(f"frame must be 'open'|'boxed'|'none', got {frame!r}")
-    # Register conda-installed fonts (mscorefonts lands in $CONDA_PREFIX/fonts, off mpl's scan path)
+
     try:
         import os, sys, glob, matplotlib.font_manager as fm
         fdir = os.path.join(os.environ.get("CONDA_PREFIX") or sys.prefix, "fonts")
@@ -76,18 +76,18 @@ def panel_letter(ax, letter, dx=-0.18, dy=1.02, case="lower", fontsize=None):
     """§5.7: bold panel letter outside top-left of axes. case ∈ {'lower','upper'}."""
     import matplotlib.pyplot as plt
     if fontsize is None:
-        fontsize = plt.rcParams.get("font.size", 8) + 1  # §5.2: bold + one step above base
+        fontsize = plt.rcParams.get("font.size", 8) + 1
     s = letter.lower() if case == "lower" else letter.upper()
     ax.text(dx, dy, s, transform=ax.transAxes,
             fontweight="bold", fontsize=fontsize, va="bottom", ha="left")
 
 
 def focal_palette(labels, focal, focal_color, other="muted", base_colors=None):
-    """§4.2: map labels → colours with the focal series visually dominant.
+    """§4.2: map labels → colors with the focal series visually dominant.
 
-    other='muted'   — desaturate base_colors (or a default cycle) toward grey
-    other='grey'    — uniform light grey for all non-focal
-    other='ordinal' — non-focal on a single light→dark grey ramp (input order)
+    other='muted'   — desaturate base_colors (or a default cycle) toward gray
+    other='grey'    — uniform light gray for all non-focal
+    other='ordinal' — non-focal on a single light→dark gray ramp (input order)
     """
     import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt
@@ -107,7 +107,7 @@ def focal_palette(labels, focal, focal_color, other="muted", base_colors=None):
         rest, k = [], 0
         for l in labels:
             rest.append(ramp[min(k, nf - 1)]); k += (l not in focal_set)
-    else:  # 'muted'
+    else:
         def mute(c):
             r, g, b = mcolors.to_rgb(c)
             m = (r + g + b) / 3
@@ -120,7 +120,7 @@ def bar_with_points(ax, x, ymat, labels, colors, jitter=0.08, show_points=True,
                     errorbar=None, point_alpha=0.5, point_size=8):
     """§6.1: bar = mean; optionally overlay raw points or draw an interval.
 
-    colors   : per-label colour list (e.g. from focal_palette)
+    colors   : per-label color list (e.g. from focal_palette)
     errorbar : None | 'sd' | 'ci95' — drawn only when show_points is False.
                'ci95' is the t-distribution 95% CI of the mean
                (half-width t_{0.975,n-1} · s/√n); correct at small n where the
@@ -171,7 +171,7 @@ def goodness_arrow(ax, text="higher = better", loc="upper left", axis="y", fonts
     """§3.6: small upright direction-of-goodness cue in the margin."""
     import matplotlib.pyplot as plt
     if fontsize is None:
-        fontsize = plt.rcParams["legend.fontsize"]  # secondary / annotation role
+        fontsize = plt.rcParams["legend.fontsize"]
     pos = {"upper left": (0.02, 0.98), "upper right": (0.98, 0.98),
            "lower left": (0.02, 0.02), "lower right": (0.98, 0.02)}[loc]
     ha = "left" if "left" in loc else "right"
@@ -190,7 +190,7 @@ def end_of_line_labels(ax, xs, ys, labels, colors=None, dx=0.01, fontsize=None):
     """§6.3 / §7.3: label each line series at its right end instead of a legend box."""
     import matplotlib.pyplot as plt
     if fontsize is None:
-        fontsize = plt.rcParams["font.size"]  # base / series-identity role
+        fontsize = plt.rcParams["font.size"]
     if colors is None:
         colors = [None] * len(labels)
     span = ax.get_xlim()[1] - ax.get_xlim()[0]
@@ -232,7 +232,7 @@ def panel_crops(fig, dpi=None, pad_px=6, bbox_inches=None, pad_inches=None):
         bbox_inches = mpl.rcParams.get("savefig.bbox")
     fig.canvas.draw()
     r = fig.canvas.get_renderer()
-    # Saved-image frame in *inches*: origin (ox_in, oy_in), size (W_in, H_in).
+
     if bbox_inches == "tight":
         if pad_inches is None:
             pad_inches = mpl.rcParams.get("savefig.pad_inches", 0.1)
@@ -253,18 +253,18 @@ def panel_crops(fig, dpi=None, pad_px=6, bbox_inches=None, pad_inches=None):
             if len(s) == 1 and s.isalpha() and t.get_fontweight() in ("bold", 700):
                 lettered[ax] = s
                 break
-    # No panel letters (standalone plot, or a figure-composer sub-agent which is
-    # told NOT to draw its own letter): fall back to one crop per axes so the
-    # §9.2 loop still inspects something instead of silently iterating over {}.
+
+
+
     if not lettered:
         lettered = {ax: str(i) for i, ax in enumerate(fig.axes)}
     out = {}
     for ax, letter in lettered.items():
-        bbs = [ax.get_tightbbox(r)]  # display px at fig.dpi
-        # §3.4: a composite panel (abutting subplots sharing an axis, letter on
-        # the leftmost only) spans its letterless sharex/sharey siblings in the
-        # same grid row/col — NOT the whole grid that `subplots(sharey=True)`
-        # (== 'all') joins transitively.
+        bbs = [ax.get_tightbbox(r)]
+
+
+
+
         ss = ax.get_subplotspec()
         for sib in fig.axes:
             if sib is ax or sib in lettered:
@@ -276,7 +276,7 @@ def panel_crops(fig, dpi=None, pad_px=6, bbox_inches=None, pad_inches=None):
                     or (ax.get_shared_x_axes().joined(ax, sib) and same_col)):
                 bbs.append(sib.get_tightbbox(r))
         bb = mpl.transforms.Bbox.union(bbs)
-        # display-px → inches → saved-frame inches → saved px (y flipped)
+
         bx0 = (bb.x0 / fig.dpi - ox_in) * dpi
         bx1 = (bb.x1 / fig.dpi - ox_in) * dpi
         by0 = H_px - (bb.y1 / fig.dpi - oy_in) * dpi

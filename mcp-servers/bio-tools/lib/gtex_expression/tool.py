@@ -31,9 +31,9 @@ from typing import Any
 from .client import GtexClient
 
 DEFAULT_DATASET = "gtex_v8"
-DEFAULT_PAGE_SIZE = 1000  # verified: the API honors large itemsPerPage values
+DEFAULT_PAGE_SIZE = 1000
 
-# Routes whose responses are paged with paging_info
+
 _PAGED = True
 
 
@@ -57,7 +57,7 @@ class GtexExpression:
         self.dataset_id = dataset_id
         self.page_size = page_size
 
-    # -- pagination core ----------------------------------------------------
+
     def _walk(self, path: str, params: dict | None = None,
               max_items: int | None = None) -> dict:
         """Walk a paged route to completion (or to ``max_items``).
@@ -92,7 +92,7 @@ class GtexExpression:
                 f"totalNumberOfItems={total} (expected {expected})")
         return {"rows": rows, "total": total, "pages_fetched": pages}
 
-    # -- 1. tissue sites ------------------------------------------------------
+
     def tissue_sites(self) -> dict:
         """All tissue sites with metadata for the pinned dataset."""
         w = self._walk("/dataset/tissueSiteDetail", {"datasetId": self.dataset_id})
@@ -100,7 +100,7 @@ class GtexExpression:
         return {"dataset_id": self.dataset_id, "total": w["total"],
                 "tissue_sites": rows}
 
-    # -- 2. dataset info ------------------------------------------------------
+
     def dataset_info(self) -> dict:
         """All GTEx dataset releases (unpaged metadata route)."""
         payload = self.client.get_json("/metadata/dataset")
@@ -108,7 +108,7 @@ class GtexExpression:
         rows = sorted(rows, key=lambda r: r["datasetId"])
         return {"total": len(rows), "datasets": rows}
 
-    # -- 3. sample info ---------------------------------------------------------
+
     def sample_info(self, tissue_site_detail_id: str | None = None,
                     data_type: str | None = None,
                     subject_id: str | None = None,
@@ -126,14 +126,14 @@ class GtexExpression:
         return {"dataset_id": self.dataset_id, "total": w["total"],
                 "returned": len(rows), "samples": rows}
 
-    # -- 4. gene resolution ----------------------------------------------------
+
     def resolve_genes(self, gene_ids: list[str]) -> dict:
         """Symbols / unversioned ENSG -> versioned GENCODE ids via /reference/gene."""
         w = self._walk("/reference/gene", {"geneId": gene_ids})
         rows = sorted(w["rows"], key=lambda r: (r["geneSymbol"], r["gencodeId"]))
         return {"total": w["total"], "genes": rows}
 
-    # -- 5. median expression -----------------------------------------------------
+
     def median_expression(self, gencode_ids: list[str],
                           tissue_site_detail_ids: list[str] | None = None) -> dict:
         """Median TPM for genes x tissues (all tissues when none given)."""
@@ -145,7 +145,7 @@ class GtexExpression:
         return {"dataset_id": self.dataset_id, "total": w["total"],
                 "medians": rows}
 
-    # -- 6. expression summary ----------------------------------------------------
+
     def expression_summary(self, gene: str) -> dict:
         """Resolve a symbol, then median TPM across ALL tissues, ranked desc."""
         ref = self.resolve_genes([gene])
@@ -164,7 +164,7 @@ class GtexExpression:
                 "tissues_ranked": [{"tissueSiteDetailId": r["tissueSiteDetailId"],
                                     "median": r["median"]} for r in ranked]}
 
-    # -- 7. sample-level expression --------------------------------------------------
+
     def gene_expression(self, gencode_id: str,
                         tissue_site_detail_ids: list[str] | None = None) -> dict:
         """Sample-level TPM arrays per tissue for one gene."""
@@ -181,7 +181,7 @@ class GtexExpression:
         return {"dataset_id": self.dataset_id, "total": w["total"],
                 "tissues": rows}
 
-    # -- 8. top expressed genes ----------------------------------------------------
+
     def top_expressed(self, tissue_site_detail_id: str, n: int = 50,
                       filter_mt_gene: bool = True) -> dict:
         """Top-n genes by median TPM in one tissue (API-side ranking)."""
@@ -193,9 +193,9 @@ class GtexExpression:
                 "tissueSiteDetailId": tissue_site_detail_id,
                 "filter_mt_gene": filter_mt_gene,
                 "total_genes_in_ranking": w["total"], "returned": len(w["rows"]),
-                "genes": w["rows"]}  # API order = rank order; do not re-sort
+                "genes": w["rows"]}
 
-    # -- 9. eGenes -------------------------------------------------------------------
+
     def eqtl_genes(self, tissue_site_detail_id: str,
                    max_items: int | None = None) -> dict:
         """All eGenes for a tissue (full paged walk, count-verified)."""
@@ -207,7 +207,7 @@ class GtexExpression:
                 "tissueSiteDetailId": tissue_site_detail_id,
                 "total": w["total"], "returned": len(rows), "egenes": rows}
 
-    # -- 10. single-tissue eQTLs ---------------------------------------------------
+
     def single_tissue_eqtls(self, gencode_id: str | None = None,
                             variant_id: str | None = None,
                             tissue_site_detail_id: str | None = None) -> dict:
@@ -227,7 +227,7 @@ class GtexExpression:
         return {"dataset_id": self.dataset_id, "total": w["total"],
                 "eqtls": rows}
 
-    # -- 11. multi-tissue eQTLs (METASOFT) ----------------------------------------
+
     def multi_tissue_eqtls(self, gencode_id: str,
                            variant_id: str | None = None) -> dict:
         """METASOFT multi-tissue meta-analysis rows for a gene (optionally 1 variant)."""
@@ -239,7 +239,7 @@ class GtexExpression:
         return {"dataset_id": self.dataset_id, "gencodeId": gencode_id,
                 "total": w["total"], "associations": rows}
 
-    # -- 12. dynamic eQTL calculation ------------------------------------------------
+
     def calculate_eqtl(self, gencode_id: str, variant_id: str,
                        tissue_site_detail_id: str) -> dict:
         """On-the-fly eQTL calculation (/association/dyneqtl) — unpaged.

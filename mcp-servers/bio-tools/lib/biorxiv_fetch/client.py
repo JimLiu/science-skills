@@ -67,15 +67,15 @@ class BiorxivClient:
                 self._last_request_t = time.monotonic()
                 self.stats.requests += 1
                 self.stats.bytes_downloaded += len(resp.content)
-            except requests.RequestException as exc:  # transport error
+            except requests.RequestException as exc:
                 self._last_request_t = time.monotonic()
                 last_exc = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(min(2 ** attempt, 30))
                 continue
             if resp.status_code in self.RETRY_STATUSES:
                 last_exc = BiorxivApiError(f"HTTP {resp.status_code} for {url}")
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(min(2 ** attempt, 30))
                 continue
             if resp.status_code == 404:

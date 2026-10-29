@@ -2,7 +2,10 @@
 
 Covers the works / authors / sources surface of the OpenAlex REST API
 (citation graph, OA status, abstract reconstruction from the inverted
-index). Keyless; uses the polite pool via a ``mailto`` parameter.
+index). Authenticated: OpenAlex requires an API key on every request (the
+anonymous polite pool and ``mailto`` are retired); this package sends it as
+a bearer header. The key comes from the ``OPENALEX_API_KEY`` env injected by
+the host; a missing key raises ``mcp_servers_common.ua.OpenAlexKeyRequired``.
 """
 from .client import OpenAlexClient, OpenAlexApiError, NotFound
 from .records import (lean_author, lean_source, lean_work,

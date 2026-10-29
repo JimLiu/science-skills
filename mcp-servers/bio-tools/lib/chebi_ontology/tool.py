@@ -92,8 +92,8 @@ def _normalize_compound(raw: dict) -> dict:
                           "url": entry.get("url")})
 
     relations = raw.get("ontology_relations") or {}
-    # outgoing: this entity -> other (e.g. caffeine "is a" trimethylxanthine);
-    # incoming: other -> this entity (e.g. children via "is a").
+
+
     outgoing = [_normalize_relation(r) for r in relations.get("outgoing_relations", [])]
     incoming = [_normalize_relation(r) for r in relations.get("incoming_relations", [])]
 

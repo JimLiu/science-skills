@@ -31,7 +31,7 @@ def _unit_value(node: Any) -> dict:
     return {"value": _as_float(node), "units": None}
 
 
-# ------------------------------------------------------------------ publications
+
 def extract_publications(entry: dict) -> dict:
     """Full publication block: primary citation with complete author list and
     external references, plus any auxiliary citations (``citation_list`` keys
@@ -42,7 +42,7 @@ def extract_publications(entry: dict) -> dict:
     def _one(citation_node: Any) -> dict | None:
         if not isinstance(citation_node, dict) or not citation_node:
             return None
-        # payload sits under a single type key, e.g. {"citation_type": {...}}
+
         inner = citation_node
         if "external_references" not in inner and "author" not in inner:
             first_val = next(iter(citation_node.values()), None)
@@ -102,7 +102,7 @@ def extract_publications(entry: dict) -> dict:
     }
 
 
-# --------------------------------------------------------------------- map info
+
 def extract_map_info(entry: dict) -> dict:
     """Complete map metadata block: file/format/data type, dimensions, spacing,
     origin, axis order, cell, voxel statistics, contour levels, symmetry, label."""
@@ -147,7 +147,7 @@ def extract_map_info(entry: dict) -> dict:
     }
 
 
-# ------------------------------------------------------------------ sample info
+
 def extract_sample_info(entry: dict) -> dict:
     """Detailed sample block: per-macromolecule records (type, weight, copies,
     EC number, source organism, sequence cross-refs) and per-supramolecule
@@ -219,7 +219,7 @@ def extract_sample_info(entry: dict) -> dict:
     }
 
 
-# ----------------------------------------------------------------- imaging info
+
 def extract_imaging_info(entry: dict) -> dict:
     """Microscopy + specimen-preparation metadata: microscope, voltage, source,
     detector, dose, modes, defocus range, magnification, Cs, cryogen; grid,
@@ -294,8 +294,8 @@ def extract_imaging_info(entry: dict) -> dict:
     }
 
 
-# ------------------------------------------------------------------- validation
-#: numeric validation blocks lifted verbatim (when present) from /analysis/{id}
+
+
 _VALIDATION_SCALAR_BLOCKS = (
     "recommended_contour_level",
     "predicated_contour_level",

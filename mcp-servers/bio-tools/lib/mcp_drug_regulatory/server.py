@@ -11,19 +11,22 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import blank
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 from openfda_drugsfda import COUNT_FIELDS, SearchSpec
 from openfda_labels import run_spec
 
-mcp = FastMCP("mcp-drug-regulatory")
+
+
+mcp = GuardedFastMCP("mcp-drug-regulatory")
 
 
 @lru_cache(maxsize=1)
@@ -72,7 +75,37 @@ def _build_spec(
     )
 
 
-# ------------------------------------------------------------------ Drugs@FDA
+
+
+
+def _yyyymmdd(date: str | None) -> str:
+    """'2026-08-19' and '20260819' both give '20260819'; '' when absent."""
+    return (date or "").replace("-", "")
+
+
+def _latest_action(record: dict, lo: str = "", hi: str = "") -> str:
+    """Newest submissions[].submission_status_date within [lo, hi] (YYYYMMDD,
+    inclusive, '' = unbounded), as YYYYMMDD; '' when the record has none."""
+    dates = (
+        _yyyymmdd(s.get("submission_status_date")) for s in record.get("submissions") or []
+    )
+    in_window = (d for d in dates if d and (not lo or lo <= d) and (not hi or d <= hi))
+    return max(in_window, default="")
+
+
+def _newest_first(
+    records: list[dict], date_from: str | None = None, date_to: str | None = None
+) -> list[dict]:
+    """Sort applications by their newest submission_status_date, descending;
+    with date_from/date_to (YYYY-MM-DD or YYYYMMDD, inclusive, either may be
+    None) only dates inside that window count. Records with no counting date
+    sort last; ties break on application_number, descending."""
+    lo, hi = _yyyymmdd(date_from), _yyyymmdd(date_to)
+    return sorted(
+        records,
+        key=lambda r: (_latest_action(r, lo, hi), r.get("application_number") or ""),
+        reverse=True,
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -109,32 +142,65 @@ def search_drug_applications(
     Args:
         search_type: "and" (default) or "or" — how the provided filters combine.
         submission_date_from/to: Constrain submissions.submission_status_date
-            (YYYY-MM-DD); always ANDed.
-        raw_search: Verbatim openFDA search= string (escape hatch; overrides the
-            mapped filters).
-        max_records: Cap on application records returned (full set is still
-            retrieved and counted; `truncated` flags the cap).
+            (YYYY-MM-DD); always ANDed. An application matches if any of its
+            submissions, original or supplement, falls in the range.
+        raw_search: Verbatim openFDA search= string (escape hatch; replaces the
+            mapped filters and date bounds). Put spaces between terms, not '+'
+            (it is URL-encoded to %2B and the query fails).
+        max_records: Cap on records returned (the full set is still retrieved
+            and counted; `truncated` flags the cap). Records come newest first,
+            by each application's most recent submission_status_date (only
+            dates inside submission_date_from/to count when given), so the cap
+            drops the oldest.
 
     Returns:
-        {total (API's own count), n_returned, truncated, last_updated,
+        {total (API's own count), n_returned, truncated, order,
+         note (when truncated: what was dropped and how to get it), last_updated,
          records: [{application_number, sponsor_name, products: [...],
          submissions: [...], openfda_generic_name, openfda_pharm_class_epc, ...}]}.
+        A first approval is the submission with submission_type "ORIG" and
+        submission_status "AP". `last_updated` is the dataset date: Drugs@FDA
+        can trail the newest approvals by days and excludes CBER-regulated
+        biologics (vaccines, blood products, cell and gene therapies), so
+        cross-check "most recent" questions against a current source.
     """
+
+
+
+    if blank(raw_search):
+        raise ValueError("raw_search must be non-empty")
     spec = _build_spec(
         brand, generic, active_ingredient, sponsor, marketing_status, dosage_form,
         route, None, pharm_class, pharm_class_type, search_type,
         submission_date_from, submission_date_to, raw_search,
     )
     result = _drugsfda().retrieve(spec)
-    out = result.records[:max_records]
-    return {
+
+
+
+
+    window = (submission_date_from, submission_date_to) if raw_search is None else (None, None)
+    out = _newest_first(result.records, *window)[:max_records]
+    scope = " inside submission_date_from/to" if any(window) else ""
+    narrow = "the raw_search string" if raw_search is not None else "the query (dates, filters)"
+    truncated = result.total > len(out)
+    response = {
         "search": spec.to_search(),
         "total": result.total,
         "n_returned": len(out),
-        "truncated": result.total > len(out),
-        "last_updated": result.last_updated,
-        "records": out,
+        "truncated": truncated,
+        "order": f"newest submission_status_date{scope} first",
     }
+    if truncated:
+        response["note"] = (
+            f"Kept the {len(out)} of {result.total} matching applications with the "
+            f"most recent submission activity{scope} (newest first) and dropped the "
+            f"{result.total - len(out)} with older activity. Narrow {narrow} or raise "
+            f"max_records (up to {result.total}) to see the rest."
+        )
+    response["last_updated"] = result.last_updated
+    response["records"] = out
+    return response
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -255,7 +321,7 @@ def get_generic_equivalents(brand: str) -> dict:
     return _drugsfda().generic_equivalents(brand)
 
 
-# ---------------------------------------------------------------- drug labels
+
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -311,6 +377,8 @@ def search_drug_labels(
             spec[key] = val
     if exact:
         spec["exact"] = True
+    if blank(raw_search):
+        raise ValueError("raw_search must be non-empty")
     if raw_search is not None:
         spec = {"search": raw_search}
     result = run_spec(spec, _labels(), sections=sections)
@@ -325,10 +393,10 @@ def search_drug_labels(
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

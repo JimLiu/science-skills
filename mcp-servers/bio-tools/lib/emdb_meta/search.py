@@ -73,7 +73,7 @@ def run_search_spec(client: EMDBClient, query: str, *, fl: str = DEFAULT_FL,
         if len(rows) < rows_per_page:
             break
         page += 1
-    # de-duplicate defensively and sort by accession for deterministic output
+
     seen = set()
     unique = []
     for row in records:

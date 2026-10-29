@@ -60,7 +60,7 @@ class KeggClient:
         self.stats = RequestStats()
         self._last_request_t = 0.0
 
-    # -- internals -----------------------------------------------------------------
+
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_t
         if elapsed < self.min_interval_s:
@@ -83,7 +83,7 @@ class KeggClient:
                 self.stats.requests += 1
                 self.stats.bytes_downloaded += len(resp.content)
                 self.stats.paths.append(path)
-            except requests.RequestException as exc:  # connection error, timeout
+            except requests.RequestException as exc:
                 self._last_request_t = time.monotonic()
                 last_exc = exc
                 if attempt < self.max_retries:
@@ -94,7 +94,7 @@ class KeggClient:
             if resp.status_code == 200:
                 return resp.text
             if resp.status_code == 404:
-                # No hits for this query (documented KEGG behaviour) -> empty result.
+
                 return ""
             if resp.status_code in RETRYABLE_STATUS and attempt < self.max_retries:
                 time.sleep(self.backoff_s * (2 ** attempt))
@@ -103,7 +103,7 @@ class KeggClient:
 
         raise KeggError(f"request failed after retries: {url}") from last_exc
 
-    # -- convenience ---------------------------------------------------------------
+
     def info(self, database: str = "kegg") -> str:
         """Return the raw /info text for *database* (contains the KEGG release string)."""
         return self.get_text(f"/info/{quote(str(database), safe='')}")

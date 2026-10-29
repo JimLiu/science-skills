@@ -13,13 +13,14 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from mcp.server.fastmcp import FastMCP
+from mcp_servers_common.guarded import GuardedFastMCP
 
+from mcp_servers_common.criteria import blank
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 from ols_ontologies import fetch_ontologies, list_catalogue
@@ -31,10 +32,12 @@ from kegg_link import gene_ids_by_symbol
 from kegg_link import link as kegg_link_op
 from kegg_link import conv as kegg_conv_op
 
-mcp = FastMCP("mcp-genes-ontologies")
 
 
-# One client per process; fleet clients pace/retry internally.
+mcp = GuardedFastMCP("mcp-genes-ontologies")
+
+
+
 @lru_cache(maxsize=1)
 def _mygene():
     from mygene_query import MyGeneQueryClient
@@ -77,7 +80,7 @@ def _kegg_link():
     return KeggClient()
 
 
-# --------------------------------------------------------------------- mygene
+
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -118,7 +121,7 @@ def query_genes(
     }
 
 
-# ------------------------------------------------------------------------ OLS
+
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -172,6 +175,10 @@ def search_ontology_terms(
         {query, total_found, n_returned, truncated, terms: [{curie, iri, label,
          short_form, ontology, description, type, is_defining_ontology}]}.
     """
+
+
+    if blank(query):
+        raise ValueError("query must be non-empty")
     params: dict = {"q": query, "rows": max_results, "start": 0}
     if ontologies:
         params["ontology"] = ",".join(o.lower() for o in ontologies)
@@ -243,7 +250,7 @@ def get_ontology_term(
     return get_related_terms(_ols(), ontology, term_id, relation).to_dict()
 
 
-# -------------------------------------------------------------------- QuickGO
+
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -278,6 +285,11 @@ def get_go_annotations(
          returned page), records: [{go_id, go_aspect, qualifier, go_evidence,
          eco_id, reference, assigned_by, date, ...}]}.
     """
+
+
+
+    if blank(uniprot_accession):
+        raise ValueError("uniprot_accession must be non-empty")
     query = AnnotationQuery(
         gene_product_id=uniprot_accession,
         aspect=aspect,
@@ -307,7 +319,7 @@ def get_go_annotations(
     }
 
 
-# -------------------------------------------------------------------- UniProt
+
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -348,7 +360,7 @@ def get_uniprot_entries(
             if header is None:
                 header = cols
                 continue
-            if cols == header:  # repeated header from a subsequent batch
+            if cols == header:
                 continue
             records.append(dict(zip(header, cols)))
         return {
@@ -372,7 +384,7 @@ def get_uniprot_entries(
     }
 
 
-# ------------------------------------------------------------------- Reactome
+
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -416,7 +428,7 @@ def map_reactome_pathways(
     return compact_view(result) if compact else stable_view(result)
 
 
-# ----------------------------------------------------------------------- KEGG
+
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -475,6 +487,11 @@ def search_kegg(
         keyword mode: {query, database, total_hits, n_returned, truncated,
         hits: [{entry_id, description}]}.
     """
+
+
+
+    if blank(query):
+        raise ValueError("query must be non-empty")
     if exact_gene_symbol:
         return gene_ids_by_symbol(_kegg_link(), query, organism=database)
     hits = kegg_find(_kegg_link(), database, query)
@@ -529,10 +546,10 @@ def link_kegg_ids(ids: list[str], target_db: str, operation: str = "link") -> di
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

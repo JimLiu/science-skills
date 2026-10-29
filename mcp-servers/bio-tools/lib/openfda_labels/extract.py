@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-# Warning-type SPL sections we report as present/absent, in fixed output order.
+
 WARNING_SECTION_FIELDS = [
     "boxed_warning",
     "warnings",

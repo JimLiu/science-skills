@@ -38,13 +38,13 @@ META = {
     ],
     "gpu_default": "A100",
     "supersedes": ["diffdock", "rfdiffusion"],
-    # JOB-time only (see proteomics_jax_gpu for the field contract).
-    #   dl.fbaipublicfiles.com   DiffDock's fair-esm weights download on
-    #                            first inference (RFD checkpoints are hydrated).
+
+
+
     "egress_domains": ["dl.fbaipublicfiles.com"],
 }
 
-_DIFFDOCK_SHA = "9a22cbcbc7612c7565c80e8399d9be298971f156"  # v1.1.3
+_DIFFDOCK_SHA = "9a22cbcbc7612c7565c80e8399d9be298971f156"
 _RFD_SHA = "2d0c003df46b9db41d119321f15403dec3716cd9"
 _WEIGHTS_URL = "https://files.ipd.uw.edu/pub/RFdiffusion/"
 
@@ -58,12 +58,12 @@ def build(
             "nvidia/cuda:12.1.1-runtime-ubuntu22.04", add_python="3.11"
         )
         .apt_install("git", "wget", "build-essential")
-        # python-build-standalone (Modal's add_python) sets CXX=clang++; the
-        # cuda base only has g++. prody compiles a C ext (cp312-only wheel).
+
+
         .env({"CC": "gcc", "CXX": "g++"})
         .pip_install("torch==2.1.2", "numpy~=1.26.4", "pandas~=2.1.4")
-        # PyG 2.6 has native fallbacks but DiffDock imports torch_cluster /
-        # torch_scatter / torch_sparse directly — keep the cu121 wheels.
+
+
         .pip_install(
             "torch-geometric==2.6.1",
             "torch-scatter==2.1.2",
@@ -109,10 +109,10 @@ def build(
     return img, vols, {}
 
 
-# RFdiffusion model weights from files.ipd.uw.edu.
-# `wget -qc` resumes partial downloads (so a prior interrupted fetch is
-# completed, not skipped); upstream publishes no per-file sha256 — gate on
-# torch.load readability instead so a corrupt/truncated file is re-fetched.
+
+
+
+
 HYDRATE = (
     "bash",
     "-lc",
@@ -120,10 +120,10 @@ HYDRATE = (
     "for f in Base_ckpt.pt Complex_base_ckpt.pt InpaintSeq_ckpt.pt "
     "InpaintSeq_Fold_ckpt.pt ActiveSite_ckpt.pt Base_epoch8_ckpt.pt "
     "Complex_Fold_base_ckpt.pt; do "
-    # torch.serialization.add_safe_globals needs torch>=2.4; this env pins
-    # 2.1.2. Just probe the zip header — official RFdiffusion weights from
-    # a fixed URL, integrity check is "did the download finish", not pickle
-    # safety.
+
+
+
+
     '  python -c "import zipfile,sys; '
     "  sys.exit(0 if zipfile.is_zipfile('$f') else 1)\" 2>/dev/null || "
     f'  {{ rm -f "$f"; wget -qc {_WEIGHTS_URL}"$f"; }}; done',

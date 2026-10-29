@@ -85,32 +85,33 @@ c = host.compute.create(provider)
 job = c.submit_job(
     intent="scGPT embed 50k cells — 1×GPU, ~5 min",
     inputs=[
-        {"src": "dataset.h5ad", "dst_filename": "dataset.h5ad"},
-        {"src": "embed.py", "dst_filename": "embed.py"},
+        "dataset.h5ad",
+        "embed.py",
     ],
+    # env activation is host-specific — put it IN the command string
+    # (e.g. "conda run -n <env> python3 embed.py"; see compute_details)
     command="python3 embed.py",
-    environment=...,   # env name from compute_details
     outputs=["embedded.h5ad"],
-    timeout_seconds=1800,
+    run_timeout_s=1800,
 )
-print(job.job_id)   # cell ends here — kernel never blocks on compute
+# the Job repr just printed itself (id, notes) — cell ends here; the kernel never waits on the job
 ```
 
 Then call the `wait_for_notification` brain-tool. When the
 `compute_done` notification arrives, act on its payload:
 
 ```python
-save_artifacts(payload["featured_files"])   # paths under hpc/<job_id>/
+save_artifacts(payload["output_files"])   # paths under hpc/<job_id>/
 ```
 
-For the full result dict (`output_files`, `remote_workdir`, …), re-enter the
+For the full record (`files`, `stdout_tail`, `notes`, …), re-enter the
 kernel and bind the compute handle separately — `.close()` lives on the
 handle, not on the job object:
 
 ```python
-h = host.compute.create(provider)
-res = h.attach_job(job_id).result()
-h.close()
+c = host.compute.create(provider)
+res = c.attach_job(job_id).result()   # a read of the persisted result, never a wait
+c.close(intent="scGPT embedding done")
 ```
 
 See the `remote-compute-ssh` / `remote-compute-modal` skill for the

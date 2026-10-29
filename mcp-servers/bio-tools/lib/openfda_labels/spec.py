@@ -33,7 +33,7 @@ FIELD_MAP = {
     "product_type": "openfda.product_type",
 }
 
-# Fixed clause order => deterministic search strings.
+
 FIELD_ORDER = ["active_ingredient", "generic_name", "brand_name", "route", "product_type"]
 
 _META_KEYS = {"id", "exact", "search", "frozen_total", "frozen_search"}

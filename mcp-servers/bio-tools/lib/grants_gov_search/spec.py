@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 VALID_STATUSES = ("forecasted", "posted", "closed", "archived")
 ALL_STATUSES = "forecasted|posted|closed|archived"
-DEFAULT_STATUSES = "forecasted|posted"  # the API's own default when omitted
+DEFAULT_STATUSES = "forecasted|posted"
 
 
 def _pipe_join(value) -> str:
@@ -31,8 +31,8 @@ class GrantsSearchSpec:
 
     keyword: str | None = None
     opp_num: str | None = None
-    aln: str | None = None                      # CFDA / Assistance Listing Number
-    agencies: str | tuple | list | None = None  # e.g. "HHS-NIH11" or ["HHS-NIH11", "HHS-FDA"]
+    aln: str | None = None
+    agencies: str | tuple | list | None = None
     opp_statuses: str = DEFAULT_STATUSES
     eligibilities: str | tuple | list | None = None
     funding_categories: str | tuple | list | None = None

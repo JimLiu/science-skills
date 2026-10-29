@@ -12,7 +12,7 @@ import requests
 BASE_URL = "https://www.ebi.ac.uk/emdb/api"
 USER_AGENT = "emdb-meta/0.1 (bio-tools; structured EMDB metadata retrieval)"
 
-# EBI politeness: <= 2 requests / second.
+
 MIN_REQUEST_INTERVAL_S = 0.5
 
 
@@ -44,7 +44,7 @@ class EMDBClient:
         self.bytes_downloaded = 0
         self._last_request_t = 0.0
 
-    # ------------------------------------------------------------------ http
+
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_t
         if elapsed < self.min_interval_s:
@@ -63,7 +63,7 @@ class EMDBClient:
                     raise EMDBNotFound(url)
                 if resp.status_code in (429, 500, 502, 503, 504):
                     last_exc = EMDBError(f"HTTP {resp.status_code} for {url}")
-                    if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                    if attempt < self.max_retries:
                         time.sleep(min(2.0 ** attempt, 8.0))
                     continue
                 resp.raise_for_status()
@@ -72,12 +72,12 @@ class EMDBClient:
                 raise
             except (requests.ConnectionError, requests.Timeout) as exc:
                 last_exc = exc
-                if attempt < self.max_retries:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries:
                     time.sleep(min(2.0 ** attempt, 8.0))
                 continue
         raise EMDBError(f"request failed after {self.max_retries + 1} attempts: {url}") from last_exc
 
-    # --------------------------------------------------------------- routes
+
     def get_entry(self, emdb_id: str) -> dict:
         """GET /entry/{id} -> full entry JSON document (metadata only)."""
         emdb_id = normalize_emdb_id(emdb_id)

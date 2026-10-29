@@ -110,7 +110,7 @@ class PanglaoDB:
         self.path = pathlib.Path(tsv_gz_path)
         self.rows = parse_markers(self.path)
 
-    # -- bc_get_panglaodb_marker_genes ------------------------------------
+
     def marker_genes(
         self,
         cell_type: str | None = None,
@@ -159,7 +159,7 @@ class PanglaoDB:
             out.append(row)
         return sorted(out, key=_row_sort_key)
 
-    # -- bc_get_panglaodb_options ------------------------------------------
+
     def options(self) -> dict:
         """Distinct species / organs / cell types (+ cell types per organ).
 
@@ -183,7 +183,7 @@ class PanglaoDB:
             "cell_types_by_organ": by_organ,
         }
 
-    # -- reverse lookup ------------------------------------------------------
+
     def cell_types_for_gene(
         self, symbol: str, *, include_synonyms: bool = False
     ) -> list[dict]:

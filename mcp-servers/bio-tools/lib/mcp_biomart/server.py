@@ -21,6 +21,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from mcp_servers_common import Tier1Server, load_schemas, original_json
+from mcp_servers_common.criteria import blank
 from mcp_servers_common.gate import apply_gate_tier1
 
 from . import marshal
@@ -56,7 +57,7 @@ def _translation_dict(dataset: str, from_attr: str, to_attr: str) -> dict:
     return marshal.translation_dict(client._parse_tsv(body, 2))
 
 
-# ----------------------------------------------------------------- handlers
+
 def list_marts(args: dict) -> str:
     try:
         return marshal.csv_text(
@@ -91,9 +92,24 @@ def list_filters(args: dict) -> str:
 def get_data(args: dict) -> str:
     try:
         dataset = args["dataset"]
+        filters = args.get("filters") or {}
+
+
+
+
+
+        bad = sorted(
+            k for k, v in filters.items()
+            if blank(v) or (isinstance(v, (list, tuple))
+                            and (not v or any(not str(x).strip()
+                                              for x in v))))
+        if bad:
+            raise ValueError(
+                f"filter(s) {', '.join(bad)} have empty values — an empty "
+                "filter matches nothing; omit the filter instead")
         _, filter_types = _configuration(dataset)
         xml = marshal.build_query_xml(
-            dataset, args["attributes"], args.get("filters") or {},
+            dataset, args["attributes"], filters,
             filter_types, header=True)
         return marshal.data_csv(_client()._post(xml))
     except Exception as exc:
@@ -113,8 +129,8 @@ def get_translation(args: dict) -> str:
 
 
 def batch_translate(args: dict) -> str:
-    # Deliberate change vs original: a failed retrieval RAISES (MCP tool
-    # error) instead of silently reporting every target as not_found.
+
+
     mapping = _translation_dict(args["dataset"], args["from_attr"],
                                 args["to_attr"])
     return original_json(
@@ -138,9 +154,9 @@ def build_server() -> Tier1Server:
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py): enforce
-    # mcp_bio/deferred.json exactly like the aggregate. Serve-time only —
-    # build_server() stays pristine for parity tests and the aggregate.
+
+
+
     t1 = build_server()
     apply_gate_tier1(t1)
     t1.run()

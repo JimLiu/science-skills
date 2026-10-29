@@ -11,8 +11,8 @@ META = {
     "packages": ["deepchem", "rdkit", "molfeat", "torch"],
     "gpu_default": "A100",
     "supersedes": ["deepchem"],
-    # JOB-time only (see proteomics_jax_gpu for the field contract): the
-    # documented workflows run on staged input files only.
+
+
     "egress_domains": [],
 }
 

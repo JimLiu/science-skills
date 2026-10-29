@@ -22,16 +22,16 @@ from mcp.server.fastmcp import FastMCP
 from mcp_servers_common.gate import apply_gate_fastmcp
 from mcp.types import ToolAnnotations
 
-# All tools are read-only retrieval (operon house rule: in-repo
-# bundled servers annotate every tool explicitly).
+
+
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 mcp = FastMCP("mcp-genomes")
 
-# Ensembl stable IDs: ENS + optional species code + a feature-type letter
-# (Gene/Transcript/Protein/Exon/Regulatory, incl. GT gene-trees via the
-# trailing T) + a >= 6-digit block (real IDs carry 11), or LRG_N. The digit
-# block keeps ENS-prefixed HGNC symbols (ENSA, ENSAP1) on the symbol route.
+
+
+
+
 _STABLE_ID_RE = re.compile(r"^(ENS[A-Z]*[GTPER]\d{6,}|LRG_\d+)",
                            re.IGNORECASE)
 
@@ -39,21 +39,21 @@ _STABLE_ID_RE = re.compile(r"^(ENS[A-Z]*[GTPER]\d{6,}|LRG_\d+)",
 DEFAULT_SPECIES = "homo_sapiens"
 DEFAULT_GENOME = "hg38"
 
-# Ensembl VEP impact categories, most severe first.
+
 _IMPACT_RANK = {"HIGH": 0, "MODERATE": 1, "LOW": 2, "MODIFIER": 3}
 
-# Per-base conservation queries are span-capped: 100 kb of wiggle rows is
-# a ~8 MB upstream download — already the sensible ceiling for one call.
+
+
 _MAX_CONSERVATION_SPAN = 100_000
 
-# ENCODE TFBS-cluster track names per genome (the hg19 lift uses the
-# older wgEncode naming).
+
+
 _TFBS_TRACKS = {"hg38": "encRegTfbsClustered",
                 "hg19": "wgEncodeRegTfbsClusteredV3"}
 
 
-# One fleet client instance per process; fleet clients pace/retry
-# internally (Ensembl <= 3 req/s, UCSC <= 2 req/s).
+
+
 @lru_cache(maxsize=1)
 def _ensembl():
     from ensembl_rest import EnsemblRest
@@ -104,7 +104,7 @@ def _resolve_gene_id(symbol: str, species: str) -> dict:
     return rec
 
 
-# -------------------------------------------------------------- Ensembl ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 def ensembl_lookup(query: str, species: str = DEFAULT_SPECIES,
@@ -373,7 +373,7 @@ def ensembl_sequence(stable_id: str | None = None,
     else:
         raw = _ensembl().sequence_region(species, region.strip())
         query = {"region": region.strip(), "species": species}
-        seq_type = "genomic"  # the region route always returns genomic DNA
+        seq_type = "genomic"
     if raw is None:
         return {"found": False, "query": query, "seq_type": seq_type,
                 "id": None, "description": None, "molecule": None,
@@ -427,7 +427,7 @@ def ensembl_overlap_region(region: str, feature: str = "gene",
             "features": capped}
 
 
-# ----------------------------------------------------------------- UCSC ---
+
 
 @mcp.tool(annotations=READ_ONLY)
 def ucsc_list_tracks(genome: str = DEFAULT_GENOME,
@@ -480,23 +480,23 @@ def ucsc_list_tracks(genome: str = DEFAULT_GENOME,
 
 def _extract_track_rows(payload: dict, track: str, chrom: str) -> list:
     """Locate the row list in a /getData/track payload — shared by
-    ucsc_track_data / ucsc_conservation / ucsc_tfbs_clusters (finding
-    3406323909: the two summary tools previously missed this hardening, so
+    ucsc_track_data / ucsc_conservation / ucsc_tfbs_clusters (the two
+    summary tools previously missed this hardening, so
     a composite track keyed by subtrack silently summarized zero rows —
     e.g. a confident coverage_fraction: 0.0 — instead of raising).
     """
     rows = payload.get(track)
     if rows is None:
-        # Composite responses key rows by subtrack; fall back to the
-        # single list-valued field.
+
+
         lists = [v for v in payload.values() if isinstance(v, list)]
         rows = lists[0] if len(lists) == 1 else None
-    if isinstance(rows, dict):  # some tracks key rows by chromosome
+    if isinstance(rows, dict):
         rows = rows.get(chrom, [])
     if rows is None:
-        # No unambiguous row list located: honest only if the API says
-        # the listing was empty anyway — otherwise refuse rather than
-        # return rows=[] against items_returned=N (silent data loss).
+
+
+
         if int(payload.get("itemsReturned") or 0) > 0:
             raise RuntimeError(
                 f"unrecognised UCSC payload shape for track {track!r}: "
@@ -602,8 +602,8 @@ def ucsc_conservation(chrom: str, start: int, end: int,
                          f"region into consecutive windows")
     payload = _ucsc().track_data(genome, track, chrom, start, end)
     if payload.get("maxItemsLimit"):
-        # A truncated row list would yield a silently-wrong summary —
-        # refuse instead (module contract: silent truncation is impossible).
+
+
         raise RuntimeError(
             f"UCSC truncated the {track!r} listing for this span "
             f"(itemsReturned={payload.get('itemsReturned')}) — the summary "
@@ -621,8 +621,8 @@ def ucsc_conservation(chrom: str, start: int, end: int,
                 f"ucsc_conservation needs a wiggle/bigWig score track "
                 f"(phyloP*/phastCons*); use ucsc_track_data for "
                 f"BED-like tracks")
-        # Clip run-length rows to the requested window: an edge run that
-        # extends past [start, end) must not inflate coverage/stats.
+
+
         rs, re_ = max(start, int(r.get("start", 0))), min(end, int(r.get("end", 0)))
         w = re_ - rs
         if w <= 0:
@@ -640,9 +640,9 @@ def ucsc_conservation(chrom: str, start: int, end: int,
            "mean": round(total / covered, 6) if covered else None,
            "min": vmin, "max": vmax}
     if include_values:
-        # Emit the SAME window-clipped rows the summary was computed from,
-        # so re-deriving coverage from values always reproduces
-        # n_bases_covered (review 3388038800).
+
+
+
         capped = kept[:max_values]
         out["values"] = capped
         out["values_truncated"] = len(kept) > len(capped)
@@ -737,10 +737,10 @@ def ucsc_chrom_sizes(genome: str = DEFAULT_GENOME,
 
 
 def main() -> None:
-    # Standalone serving gate (see mcp_servers_common/gate.py):
-    # enforce mcp_bio/deferred.json exactly like the aggregate.
-    # In main(), not at import — the aggregate imports this module
-    # and applies its own gate.
+
+
+
+
     apply_gate_fastmcp(mcp)
     mcp.run()
 

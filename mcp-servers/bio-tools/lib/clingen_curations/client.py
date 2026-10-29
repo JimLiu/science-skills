@@ -37,7 +37,7 @@ class NotFound(ClinGenApiError):
 class TransportStats:
     requests: int = 0
     bytes_downloaded: int = 0
-    raw_bodies: list = field(default_factory=list)  # populated only when capture_raw=True
+    raw_bodies: list = field(default_factory=list)
 
 
 class ClinGenClient:
@@ -72,7 +72,7 @@ class ClinGenClient:
             except requests.RequestException as exc:
                 self._last_request_t = time.monotonic()
                 last_err = exc
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(min(2 ** attempt, 30))
                 continue
             self._last_request_t = time.monotonic()
@@ -84,7 +84,7 @@ class ClinGenClient:
                 last_err = ClinGenApiError(f"HTTP {resp.status_code} for {url}")
                 retry_after = resp.headers.get("Retry-After", "")
                 delay = retry_after_seconds(retry_after, min(2 ** attempt, 30))
-                if attempt < self.max_retries - 1:  # no dead sleep on the final attempt (#2875 review 3386234809)
+                if attempt < self.max_retries - 1:
                     time.sleep(delay)
                 continue
             if resp.status_code != 200:
